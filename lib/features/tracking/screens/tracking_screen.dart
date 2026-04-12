@@ -132,33 +132,70 @@ class _ErrorBanner extends StatelessWidget {
 
 // ── Animated speedometer ──────────────────────────────────────────────────────
 
-class _AnimatedSpeedometer extends StatelessWidget {
+class _AnimatedSpeedometer extends StatefulWidget {
   final double speed;
   final bool isTracking;
   const _AnimatedSpeedometer({required this.speed, required this.isTracking});
+
+  @override
+  State<_AnimatedSpeedometer> createState() => _AnimatedSpeedometerState();
+}
+
+class _AnimatedSpeedometerState extends State<_AnimatedSpeedometer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  double _displayedSpeed = 0.0;
+  double _targetSpeed = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _targetSpeed = widget.speed;
+    _displayedSpeed = widget.speed;
+
+    // Runs continuously at ~60 fps; each tick lerps displayedSpeed toward target.
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat();
+
+    _controller.addListener(_onTick);
+  }
+
+  void _onTick() {
+    final next = _displayedSpeed + (_targetSpeed - _displayedSpeed) * 0.15;
+    // Stop updating once close enough to avoid endless micro-rebuilds.
+    if ((next - _displayedSpeed).abs() < 0.01) return;
+    setState(() => _displayedSpeed = next);
+  }
+
+  @override
+  void didUpdateWidget(_AnimatedSpeedometer old) {
+    super.didUpdateWidget(old);
+    _targetSpeed = widget.speed;
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = constraints.maxWidth.clamp(0.0, constraints.maxHeight);
-        return TweenAnimationBuilder<double>(
-          tween: Tween<double>(end: speed),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-          builder: (context, animatedSpeed, _) {
-            return Center(
-              child: SizedBox(
-                width: size,
-                height: size,
-                child: SpeedometerWidget(
-                  speed: animatedSpeed,
-                  maxSpeed: 240,
-                  isTracking: isTracking,
-                ),
-              ),
-            );
-          },
+        return Center(
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: SpeedometerWidget(
+              speed: _displayedSpeed,
+              maxSpeed: 240,
+              isTracking: widget.isTracking,
+            ),
+          ),
         );
       },
     );

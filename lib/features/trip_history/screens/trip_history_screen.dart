@@ -277,15 +277,16 @@ class _CardStat extends StatelessWidget {
               height: 1,
             ),
           ),
-          if (unit.isNotEmpty)
-            Text(
-              unit,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 9,
-                letterSpacing: 0.4,
-              ),
+          Text(
+            unit,
+            style: TextStyle(
+              color: unit.isNotEmpty
+                  ? AppTheme.textSecondary
+                  : Colors.transparent,
+              fontSize: 9,
+              letterSpacing: 0.4,
             ),
+          ),
         ],
       ),
     );

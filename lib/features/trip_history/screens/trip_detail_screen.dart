@@ -296,16 +296,17 @@ class _Stat extends StatelessWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          if (unit.isNotEmpty)
-            Text(
-              unit,
-              style: const TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 9,
-                letterSpacing: 0.4,
-              ),
-              textAlign: TextAlign.center,
+          Text(
+            unit,
+            style: TextStyle(
+              color: unit.isNotEmpty
+                  ? AppTheme.textSecondary
+                  : Colors.transparent,
+              fontSize: 9,
+              letterSpacing: 0.4,
             ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );
