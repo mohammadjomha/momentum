@@ -127,8 +127,10 @@ class _RouteMap extends StatelessWidget {
         ),
         children: [
           TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.momentum.app',
+            urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            subdomains: const ['a', 'b', 'c', 'd'],
+            retinaMode: true,
+            userAgentPackageName: 'com.momentum.momentum',
           ),
           PolylineLayer(
             polylines: [
