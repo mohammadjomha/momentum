@@ -45,5 +45,15 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Momentum needs your location to track your drive in real time.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Momentum uses your location in the background to continue tracking your trip.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Momentum uses motion sensors to detect braking and cornering G-force.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 </dict>
 </plist>
