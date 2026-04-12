@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -64,6 +61,15 @@ class DefaultFirebaseOptions {
     projectId: 'momentum-33e42',
     storageBucket: 'momentum-33e42.firebasestorage.app',
     iosBundleId: 'com.momentum.momentum',
+  );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBVacEjQpA8vI903gf-x5YnjwP2vgrds2U',
+    appId: '1:703809142011:web:4eb2cbdcd8740ab38e845e',
+    messagingSenderId: '703809142011',
+    projectId: 'momentum-33e42',
+    authDomain: 'momentum-33e42.firebaseapp.com',
+    storageBucket: 'momentum-33e42.firebasestorage.app',
   );
 
 }

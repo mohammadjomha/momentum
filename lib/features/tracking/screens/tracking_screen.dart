@@ -212,9 +212,9 @@ class _StatsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Expanded(child: _StatCard(label: 'DISTANCE', value: tripData.distance.toStringAsFixed(2), unit: 'km')),
+        Expanded(child: _StatCard(label: 'DIST', value: tripData.distance.toStringAsFixed(2), unit: 'km')),
         const SizedBox(width: 10),
-        Expanded(child: _StatCard(label: 'DURATION', value: _fmtMin(tripData.duration), unit: 'min')),
+        Expanded(child: _StatCard(label: 'DUR', value: _fmtMin(tripData.duration), unit: 'min')),
         const SizedBox(width: 10),
         Expanded(child: _StatCard(label: 'AVG', value: tripData.averageSpeed.toStringAsFixed(0), unit: 'km/h')),
         const SizedBox(width: 10),

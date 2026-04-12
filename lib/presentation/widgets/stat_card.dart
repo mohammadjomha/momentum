@@ -18,6 +18,7 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: const BoxConstraints(minHeight: 72),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppTheme.cardGrey,
@@ -43,6 +44,8 @@ class StatCard extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 label.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontSize: 8,
                       color: AppTheme.textSecondary,

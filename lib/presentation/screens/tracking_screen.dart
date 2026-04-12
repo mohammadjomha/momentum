@@ -261,7 +261,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 children: [
                   Expanded(
                     child: StatCard(
-                      label: 'Distance',
+                      label: 'Dist',
                       value: _currentTripData.distance.toStringAsFixed(2),
                       unit: 'km',
                       icon: Icons.straighten_rounded,
@@ -270,7 +270,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: StatCard(
-                      label: 'Duration',
+                      label: 'Dur',
                       value: _currentTripData.duration.inMinutes.toString(),
                       unit: 'min',
                       icon: Icons.access_time_rounded,
