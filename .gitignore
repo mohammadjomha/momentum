@@ -18,9 +18,7 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# VS Code
 #.vscode/
 
 # Flutter/Dart/Pub related
@@ -56,10 +54,9 @@ android/gradlew
 android/gradlew.bat
 android/gradle/wrapper/gradle-wrapper.jar
 
-# Firebase — auto-generated or sensitive, do not commit
+# Firebase — sensitive, injected at CI build time via GitHub Actions secrets
 google-services.json
 GoogleService-Info.plist
-lib/firebase_options.dart
 
 # iOS generated
 **/ios/Flutter/App.framework
