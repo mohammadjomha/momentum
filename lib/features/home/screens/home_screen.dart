@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../profile/screens/profile_screen.dart';
 import '../../tracking/screens/tracking_screen.dart';
 import '../../trip_history/screens/trip_history_screen.dart';
 
@@ -19,9 +20,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _TabItem(label: 'History', icon: Icons.history_rounded),
     _TabItem(label: 'Market', icon: Icons.storefront_outlined),
     _TabItem(label: 'Ranks', icon: Icons.leaderboard_outlined),
+    _TabItem(label: 'Profile', icon: Icons.person_outline_rounded),
   ];
-
-  static const _placeholderTitles = ['', 'Marketplace', 'Leaderboard'];
 
   Widget _buildPage(int index) {
     switch (index) {
@@ -29,8 +29,14 @@ class _HomeScreenState extends State<HomeScreen> {
         return const TrackingScreen();
       case 1:
         return const TripHistoryScreen();
+      case 4:
+        return const ProfileScreen();
+      case 2:
+        return const _PlaceholderPage(title: 'Marketplace');
+      case 3:
+        return const _PlaceholderPage(title: 'Leaderboard');
       default:
-        return _PlaceholderPage(title: _placeholderTitles[index - 1]);
+        return const _PlaceholderPage(title: '');
     }
   }
 
