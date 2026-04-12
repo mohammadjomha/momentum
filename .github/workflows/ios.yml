@@ -1,0 +1,30 @@
+name: iOS-ipa-build
+on:
+  workflow_dispatch:
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Write GoogleService-Info.plist
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}" | base64 --decode \
+            > ios/Runner/GoogleService-Info.plist
+      - run: pod repo update
+        working-directory: ios
+      - run: flutter build ios --release --no-codesign
+      - run: mkdir -p Payload
+        working-directory: build/ios/iphoneos
+      - run: cp -R Runner.app Payload/
+        working-directory: build/ios/iphoneos
+      - name: Package IPA
+        run: ditto -c -k --sequesterRsrc --keepParent Payload FlutterIpaExport.ipa
+        working-directory: build/ios/iphoneos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlutterIpaExport
+          path: build/ios/iphoneos/FlutterIpaExport.ipa
