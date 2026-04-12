@@ -1,6 +1,7 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/trip_model.dart';
@@ -82,29 +83,136 @@ class _TopBar extends StatelessWidget {
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 
-class _RouteMap extends StatelessWidget {
+// Google Maps dark style — dark grey/black background, white labels.
+const _kDarkMapStyle = '''[
+  {"elementType":"geometry","stylers":[{"color":"#212121"}]},
+  {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#ffffff"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#212121"}]},
+  {"featureType":"administrative","elementType":"geometry","stylers":[{"color":"#757575"}]},
+  {"featureType":"administrative.country","elementType":"labels.text.fill","stylers":[{"color":"#9e9e9e"}]},
+  {"featureType":"administrative.land_parcel","stylers":[{"visibility":"off"}]},
+  {"featureType":"administrative.locality","elementType":"labels.text.fill","stylers":[{"color":"#bdbdbd"}]},
+  {"featureType":"poi","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#181818"}]},
+  {"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},
+  {"featureType":"poi.park","elementType":"labels.text.stroke","stylers":[{"color":"#1b1b1b"}]},
+  {"featureType":"road","elementType":"geometry.fill","stylers":[{"color":"#2c2c2c"}]},
+  {"featureType":"road","elementType":"labels.text.fill","stylers":[{"color":"#8a8a8a"}]},
+  {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#373737"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3c3c3c"}]},
+  {"featureType":"road.highway.controlled_access","elementType":"geometry","stylers":[{"color":"#4e4e4e"}]},
+  {"featureType":"road.local","elementType":"labels.text.fill","stylers":[{"color":"#616161"}]},
+  {"featureType":"transit","elementType":"labels.text.fill","stylers":[{"color":"#757575"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#000000"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#3d3d3d"}]}
+]''';
+
+class _RouteMap extends StatefulWidget {
   final List<LatLng> points;
   const _RouteMap({required this.points});
 
+  @override
+  State<_RouteMap> createState() => _RouteMapState();
+}
+
+class _RouteMapState extends State<_RouteMap> {
+  GoogleMapController? _controller;
+  BitmapDescriptor? _startIcon;
+  BitmapDescriptor? _endIcon;
+
+  @override
+  void initState() {
+    super.initState();
+    _initMarkerIcons();
+  }
+
+  Future<void> _initMarkerIcons() async {
+    final start = await _buildCircleMarker(
+      fillColor: AppTheme.speedGreen,
+      borderColor: Colors.white,
+    );
+    final end = await _buildCircleMarker(
+      fillColor: Colors.white,
+      borderColor: AppTheme.accent,
+    );
+    if (mounted) {
+      setState(() {
+        _startIcon = start;
+        _endIcon = end;
+      });
+    }
+  }
+
+  /// Draws a filled circle with a border onto a Canvas and returns a
+  /// BitmapDescriptor suitable for use as a Google Maps marker icon.
+  Future<BitmapDescriptor> _buildCircleMarker({
+    required Color fillColor,
+    required Color borderColor,
+  }) async {
+    const double radius = 12;
+    const double borderWidth = 2;
+    const double size = (radius + borderWidth) * 2;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final center = const Offset(size / 2, size / 2);
+
+    // Fill
+    canvas.drawCircle(center, radius, Paint()..color = fillColor);
+    // Border
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = borderColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = borderWidth,
+    );
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(size.toInt(), size.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+    return BitmapDescriptor.bytes(bytes);
+  }
+
   LatLngBounds _bounds() {
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
-    for (final p in points) {
+    double minLat = widget.points.first.latitude;
+    double maxLat = widget.points.first.latitude;
+    double minLng = widget.points.first.longitude;
+    double maxLng = widget.points.first.longitude;
+    for (final p in widget.points) {
       if (p.latitude < minLat) minLat = p.latitude;
       if (p.latitude > maxLat) maxLat = p.latitude;
       if (p.longitude < minLng) minLng = p.longitude;
       if (p.longitude > maxLng) maxLng = p.longitude;
     }
     return LatLngBounds(
-      LatLng(minLat - 0.001, minLng - 0.001),
-      LatLng(maxLat + 0.001, maxLng + 0.001),
+      southwest: LatLng(minLat - 0.001, minLng - 0.001),
+      northeast: LatLng(maxLat + 0.001, maxLng + 0.001),
+    );
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _controller = controller;
+    _controller!.animateCamera(
+      CameraUpdate.newLatLngBounds(_bounds(), 40),
     );
   }
 
   @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final bounds = _bounds();
+    final midLat = (bounds.southwest.latitude + bounds.northeast.latitude) / 2;
+    final midLng = (bounds.southwest.longitude + bounds.northeast.longitude) / 2;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       decoration: BoxDecoration(
@@ -115,63 +223,49 @@ class _RouteMap extends StatelessWidget {
         ),
       ),
       clipBehavior: Clip.hardEdge,
-      child: FlutterMap(
-        options: MapOptions(
-          initialCameraFit: CameraFit.bounds(
-            bounds: _bounds(),
-            padding: const EdgeInsets.all(40),
-          ),
-          interactionOptions: const InteractionOptions(
-            flags: InteractiveFlag.none,
-          ),
+      child: GoogleMap(
+        mapType: MapType.normal,
+        style: _kDarkMapStyle,
+        initialCameraPosition: CameraPosition(
+          target: LatLng(midLat, midLng),
+          zoom: 14,
         ),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-            subdomains: const ['a', 'b', 'c', 'd'],
-            retinaMode: true,
-            userAgentPackageName: 'com.momentum.momentum',
+        onMapCreated: _onMapCreated,
+        // Disable all interaction — static display only
+        zoomControlsEnabled: false,
+        zoomGesturesEnabled: false,
+        scrollGesturesEnabled: false,
+        rotateGesturesEnabled: false,
+        tiltGesturesEnabled: false,
+        myLocationButtonEnabled: false,
+        compassEnabled: false,
+        mapToolbarEnabled: false,
+        polylines: {
+          Polyline(
+            polylineId: const PolylineId('route'),
+            points: widget.points,
+            color: AppTheme.routeLine,
+            width: 4,
           ),
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: points,
-                strokeWidth: 3.5,
-                color: AppTheme.routeLine,
-              ),
-            ],
-          ),
-          MarkerLayer(
-            markers: [
-              // Start marker — green circle
-              Marker(
-                point: points.first,
-                width: 16,
-                height: 16,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.speedGreen,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.textPrimary, width: 2),
-                  ),
+        },
+        markers: (_startIcon == null || _endIcon == null)
+            ? {}
+            : {
+                // Start marker — speedGreen fill, white border
+                Marker(
+                  markerId: const MarkerId('start'),
+                  position: widget.points.first,
+                  icon: _startIcon!,
+                  anchor: const Offset(0.5, 0.5),
                 ),
-              ),
-              // End marker — white circle
-              Marker(
-                point: points.last,
-                width: 16,
-                height: 16,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.textPrimary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.accent, width: 2),
-                  ),
+                // End marker — white fill, accent teal border
+                Marker(
+                  markerId: const MarkerId('end'),
+                  position: widget.points.last,
+                  icon: _endIcon!,
+                  anchor: const Offset(0.5, 0.5),
                 ),
-              ),
-            ],
-          ),
-        ],
+              },
       ),
     );
   }
