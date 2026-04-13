@@ -8,9 +8,6 @@ class TripService {
   Timer? _durationTimer;
   final List<double> _speedSamples = [];
 
-  // EMA smoothing — display only, does not affect avg/max calculations
-  static const double _alpha = 0.2;
-  double _smoothedSpeed = 0.0;
 
   final StreamController<TripData> _tripDataController =
       StreamController<TripData>.broadcast();
@@ -22,7 +19,6 @@ class TripService {
     _currentTrip = TripData.initial();
     _lastPosition = null;
     _speedSamples.clear();
-    _smoothedSpeed = 0.0;
 
     // Update duration every second
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -32,11 +28,8 @@ class TripService {
   }
 
   void updatePosition(Position position) {
-    // Convert speed from m/s to km/h (raw — used for avg/max)
-    final speedKmh = (position.speed * 3.6).clamp(0.0, 400.0);
-
-    // EMA smoothing for display only
-    _smoothedSpeed = _alpha * speedKmh + (1 - _alpha) * _smoothedSpeed;
+    final rawKmh = (position.speed * 3.6).clamp(0.0, 400.0);
+    final speedKmh = rawKmh < 2.0 ? 0.0 : rawKmh;
 
     _speedSamples.add(speedKmh);
 
@@ -51,13 +44,12 @@ class TripService {
       ) / 1000; // Convert to km
     }
 
-    // avg/max use raw speed, not the smoothed value
     final avgSpeed = _speedSamples.isEmpty
         ? 0.0
         : _speedSamples.reduce((a, b) => a + b) / _speedSamples.length;
 
     _updateTrip(
-      currentSpeed: _smoothedSpeed,
+      currentSpeed: speedKmh,
       averageSpeed: avgSpeed,
       maxSpeed: speedKmh > _currentTrip.maxSpeed
           ? speedKmh

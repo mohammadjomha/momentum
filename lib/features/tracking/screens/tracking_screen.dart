@@ -163,7 +163,11 @@ class _AnimatedSpeedometerState extends State<_AnimatedSpeedometer>
   }
 
   void _onTick() {
-    final next = _displayedSpeed + (_targetSpeed - _displayedSpeed) * 0.15;
+    if (_targetSpeed == 0.0 && _displayedSpeed < 1.0) {
+      setState(() => _displayedSpeed = 0.0);
+      return;
+    }
+    final next = _displayedSpeed + (_targetSpeed - _displayedSpeed) * 0.4;
     // Stop updating once close enough to avoid endless micro-rebuilds.
     if ((next - _displayedSpeed).abs() < 0.01) return;
     setState(() => _displayedSpeed = next);
