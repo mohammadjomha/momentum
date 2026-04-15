@@ -7,7 +7,8 @@ class TripService {
   Position? _lastPosition;
   Timer? _durationTimer;
   final List<double> _speedSamples = [];
-
+  bool _lastReadingInvalid = false;
+  bool get lastReadingInvalid => _lastReadingInvalid;
 
   final StreamController<TripData> _tripDataController =
       StreamController<TripData>.broadcast();
@@ -28,6 +29,12 @@ class TripService {
   }
 
   void updatePosition(Position position) {
+    if (position.speed < 0) {
+      _lastReadingInvalid = true;
+      _tripDataController.add(_currentTrip);
+      return;
+    }
+    _lastReadingInvalid = false;
     final rawKmh = (position.speed * 3.6).clamp(0.0, 400.0);
     final speedKmh = rawKmh < 2.0 ? 0.0 : rawKmh;
 

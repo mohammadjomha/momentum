@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/trip_data.dart';
 import '../../../presentation/widgets/speedometer_widget.dart';
 import '../providers/tracking_provider.dart';
+import '../widgets/gps_status_indicator.dart';
 
 class TrackingScreen extends ConsumerWidget {
   const TrackingScreen({super.key});
@@ -27,6 +28,7 @@ class TrackingScreen extends ConsumerWidget {
                 _ErrorBanner(message: state.error!),
               ],
               const SizedBox(height: 8),
+              Center(child: GpsStatusIndicator(isWeak: state.gpsWeak)),
               Expanded(
                 flex: 5,
                 child: _AnimatedSpeedometer(
@@ -75,25 +77,29 @@ class _StatusBar extends StatelessWidget {
           ),
         ),
         const Spacer(),
-        if (state.isTracking)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
-            ),
-            child: Text(
-              _formatDuration(state.tripData.duration),
-              style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1,
-                fontFeatures: [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
+        SizedBox(
+          height: 32,
+          child: state.isTracking
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.accent.withValues(alpha: 0.2)),
+                  ),
+                  child: Text(
+                    _formatDuration(state.tripData.duration),
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1,
+                      fontFeatures: [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
       ],
     );
   }

@@ -18,11 +18,13 @@ class TrackingState {
   final TrackingStatus status;
   final TripData tripData;
   final String? error;
+  final bool gpsWeak;
 
   const TrackingState({
     required this.status,
     required this.tripData,
     this.error,
+    this.gpsWeak = false,
   });
 
   bool get isTracking => status == TrackingStatus.tracking;
@@ -32,11 +34,13 @@ class TrackingState {
     TripData? tripData,
     String? error,
     bool clearError = false,
+    bool? gpsWeak,
   }) {
     return TrackingState(
       status: status ?? this.status,
       tripData: tripData ?? this.tripData,
       error: clearError ? null : (error ?? this.error),
+      gpsWeak: gpsWeak ?? this.gpsWeak,
     );
   }
 }
@@ -97,7 +101,10 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       );
 
       _tripDataSub = _tripService.tripDataStream.listen(
-        (tripData) => state = state.copyWith(tripData: tripData),
+        (tripData) => state = state.copyWith(
+          tripData: tripData,
+          gpsWeak: _tripService.lastReadingInvalid,
+        ),
       );
 
       state = state.copyWith(status: TrackingStatus.tracking);
