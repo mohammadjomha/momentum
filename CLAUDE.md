@@ -8,12 +8,14 @@ This is a capstone project for Lebanese American University (CSC department).
 
 ## Current state
 The following already exists and works — do not rewrite unless explicitly asked:
-- `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance
-- `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation
+- `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance — platform-specific settings: AndroidSettings (200ms interval) and AppleSettings (bestForNavigation, automotiveNavigation)
+- `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation — EMA removed, 2 km/h zero-clamp, lastReadingInvalid getter
 - `lib/data/models/trip_data.dart` — trip data model
-- `lib/presentation/screens/tracking_screen.dart` — main tracking screen
-- `lib/presentation/widgets/speedometer_widget.dart` — speedometer gauge
-- `lib/presentation/widgets/stat_card.dart` — stat display cards
+- `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill
+- `lib/features/tracking/widgets/speedometer_widget.dart` — speedometer gauge
+- `lib/features/tracking/widgets/stat_card.dart` — stat display cards
+- `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
+- `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid
 - `lib/core/theme/app_theme.dart` — app theme
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, sign out
@@ -49,7 +51,7 @@ lib/
 - Backend: Firebase (Firestore + Auth)
 - Map: google_maps_flutter (trip detail screen) — dark style via JSON, teal polyline, canvas-drawn circle markers
 - GPS: geolocator (already in use)
-- Motion sensors: sensors_plus (to add)
+- Motion sensors: sensors_plus
 - Routing: go_router
 
 ### Map implementation notes
@@ -59,6 +61,14 @@ lib/
 - Start marker: `speedGreen` fill + white border (canvas-drawn circle, no default pin)
 - End marker: white fill + `accent` teal border (canvas-drawn circle, no default pin)
 - Markers use `anchor: Offset(0.5, 0.5)` — circle centres on the coordinate
+
+### GPS pipeline notes
+- Android: AndroidSettings(accuracy: high, distanceFilter: 0, intervalDuration: 200ms)
+- iOS: AppleSettings(accuracy: bestForNavigation, activityType: automotiveNavigation, distanceFilter: 0, pauseLocationUpdatesAutomatically: false)
+- No app-level smoothing — raw GPS speed used directly (hardware-filtered by platform)
+- Zero-clamp: speeds below 2 km/h are treated as 0 to eliminate stationary noise
+- Invalid readings (position.speed < 0) are skipped entirely — trip stats not updated, last valid speed held
+- Display lerp: factor 0.4 at 60fps in _AnimatedSpeedometer — converges to target in ~150ms
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
@@ -148,13 +158,13 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Trip history + storage — Hive + Firestore, trip list screen, trip detail screen
 - Route visualization — Google Maps dark style, teal polyline, canvas circle markers
 - Profile screen — NHTSA make/model dropdowns, year/trim/notes, stat tiles, sign out
+- Speed tracking improvements — platform-specific GPS settings, zero-clamp, invalid reading guard, display lerp 0.4
 
 ### Remaining (in priority order)
 1. **G-force + sensor tracking** — accelerometer/gyroscope via `sensors_plus`: braking G, cornering G, smoothness score, 0–100 km/h timer
-2. **Speed tracking improvements** — GPS accuracy and smoothing
-3. **Marketplace** — browse listings, post item form (with Firebase Storage image upload), search/filter
-4. **Leaderboard** — ranked by smoothness score (primary), top speed, total distance
-5. **Final polish pass** — animations, transitions, edge cases
+2. **Marketplace** — browse listings, post item form (with Firebase Storage image upload), search/filter
+3. **Leaderboard** — ranked by smoothness score (primary), top speed, total distance
+4. **Final polish pass** — animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
