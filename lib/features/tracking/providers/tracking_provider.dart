@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -14,19 +13,21 @@ import '../../../data/services/trip_storage_service.dart';
 import '../../trip_history/models/trip_model.dart';
 import '../../trip_history/services/trip_history_service.dart';
 
-enum TrackingStatus { idle, tracking }
+enum TrackingStatus { idle, calibrating, tracking }
 
 class TrackingState {
   final TrackingStatus status;
   final TripData tripData;
   final String? error;
   final bool gpsWeak;
+  final int calibrationSecondsRemaining;
 
   const TrackingState({
     required this.status,
     required this.tripData,
     this.error,
     this.gpsWeak = false,
+    this.calibrationSecondsRemaining = 0,
   });
 
   bool get isTracking => status == TrackingStatus.tracking;
@@ -37,27 +38,29 @@ class TrackingState {
     String? error,
     bool clearError = false,
     bool? gpsWeak,
+    int? calibrationSecondsRemaining,
   }) {
     return TrackingState(
       status: status ?? this.status,
       tripData: tripData ?? this.tripData,
       error: clearError ? null : (error ?? this.error),
       gpsWeak: gpsWeak ?? this.gpsWeak,
+      calibrationSecondsRemaining:
+          calibrationSecondsRemaining ?? this.calibrationSecondsRemaining,
     );
   }
 }
-
-/// Global key used to show SnackBars from the provider without a BuildContext.
-final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class TrackingNotifier extends StateNotifier<TrackingState> {
   final LocationService _locationService;
   final TripService _tripService;
   final TripStorageService _storageService;
   final TripHistoryService _historyService;
+  final SensorService _sensorService;
 
   StreamSubscription<Position>? _positionSub;
   StreamSubscription<TripData>? _tripDataSub;
+  Timer? _calibrationTimer;
 
   // Accumulated route points for the current trip
   final List<RoutePoint> _routePoints = [];
@@ -67,6 +70,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         _tripService = TripService(),
         _storageService = TripStorageService(),
         _historyService = TripHistoryService(),
+        _sensorService = SensorService(),
         super(TrackingState(
           status: TrackingStatus.idle,
           tripData: TripData.initial(),
@@ -90,18 +94,51 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       }
 
       _routePoints.clear();
-      await _locationService.startTracking();
-      _tripService.startTrip();
 
-      scaffoldMessengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Keep your phone upright and still for accurate G-force data',
-          ),
-          duration: Duration(seconds: 4),
-        ),
+      // Start GPS immediately — position stream begins flowing right away.
+      await _locationService.startTracking();
+
+      _positionSub = _locationService.positionStream.listen(
+        (position) {
+          // Only accumulate route points; trip stats are deferred until
+          // calibration completes and startTrip() is called below.
+          _routePoints.add(RoutePoint(
+            lat: position.latitude,
+            lng: position.longitude,
+            speed: (position.speed * 3.6).clamp(0.0, 400.0),
+          ));
+        },
+        onError: (e) => state = state.copyWith(error: 'GPS error: $e'),
       );
 
+      // Start calibration countdown UI (3 → 0) while sensor calibration runs.
+      state = state.copyWith(
+        status: TrackingStatus.calibrating,
+        calibrationSecondsRemaining: 3,
+      );
+
+      int remaining = 3;
+      _calibrationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        remaining--;
+        state = state.copyWith(calibrationSecondsRemaining: remaining);
+        if (remaining <= 0) {
+          timer.cancel();
+          _calibrationTimer = null;
+        }
+      });
+
+      // Run sensor calibration (takes 3 seconds); GPS is already flowing.
+      await _sensorService.startTracking();
+
+      // Cancel any still-running countdown timer after calibration resolves.
+      _calibrationTimer?.cancel();
+      _calibrationTimer = null;
+
+      // Now begin trip stat recording.
+      _tripService.startTrip();
+
+      // Re-attach the position listener to also drive trip stats.
+      await _positionSub?.cancel();
       _positionSub = _locationService.positionStream.listen(
         (position) {
           _tripService.updatePosition(position);
@@ -121,13 +158,25 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         ),
       );
 
-      state = state.copyWith(status: TrackingStatus.tracking);
+      state = state.copyWith(
+        status: TrackingStatus.tracking,
+        calibrationSecondsRemaining: 0,
+      );
     } catch (e) {
-      state = state.copyWith(error: _friendlyError(e.toString()));
+      _calibrationTimer?.cancel();
+      _calibrationTimer = null;
+      state = state.copyWith(
+        status: TrackingStatus.idle,
+        error: _friendlyError(e.toString()),
+        calibrationSecondsRemaining: 0,
+      );
     }
   }
 
   Future<void> stopTracking() async {
+    _calibrationTimer?.cancel();
+    _calibrationTimer = null;
+
     // Cancel subscriptions first so no more position updates come in
     await _positionSub?.cancel();
     await _tripDataSub?.cancel();
@@ -209,6 +258,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
   @override
   void dispose() {
+    _calibrationTimer?.cancel();
     _positionSub?.cancel();
     _tripDataSub?.cancel();
     _locationService.dispose();

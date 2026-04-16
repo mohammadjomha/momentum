@@ -29,6 +29,14 @@ class TrackingScreen extends ConsumerWidget {
               ],
               const SizedBox(height: 8),
               Center(child: GpsStatusIndicator(isWeak: state.gpsWeak)),
+              if (state.calibrationSecondsRemaining > 0) ...[
+                const SizedBox(height: 6),
+                Center(
+                  child: _CalibrationIndicator(
+                    secondsRemaining: state.calibrationSecondsRemaining,
+                  ),
+                ),
+              ],
               Expanded(
                 flex: 5,
                 child: _AnimatedSpeedometer(
@@ -50,6 +58,48 @@ class TrackingScreen extends ConsumerWidget {
 }
 
 // ── Status bar ────────────────────────────────────────────────────────────────
+
+// ── Calibration indicator ─────────────────────────────────────────────────────
+
+class _CalibrationIndicator extends StatelessWidget {
+  final int secondsRemaining;
+  const _CalibrationIndicator({required this.secondsRemaining});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppTheme.accent.withValues(alpha: 0.5),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.sensors,
+            color: AppTheme.accent,
+            size: 14,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'CALIBRATING... $secondsRemaining',
+            style: const TextStyle(
+              color: AppTheme.accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _StatusBar extends StatelessWidget {
   final TrackingState state;

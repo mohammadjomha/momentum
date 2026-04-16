@@ -9,7 +9,6 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/home/screens/home_screen.dart';
-import 'features/tracking/providers/tracking_provider.dart';
 import 'firebase_options.dart';
 
 // Listenable that fires whenever the Firebase auth state changes,
@@ -78,7 +77,6 @@ class MomentumApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       routerConfig: _router,
-      scaffoldMessengerKey: scaffoldMessengerKey,
     );
   }
 }

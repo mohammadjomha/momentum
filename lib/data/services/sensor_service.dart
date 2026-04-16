@@ -10,7 +10,7 @@ class SensorEvent {
 
 class CornerEvent {
   final double peakG;
-  final bool isRight; // positive X = right, negative X = left
+  final bool isRight; // positive lateral = right
   const CornerEvent(this.peakG, this.isRight);
 }
 
@@ -70,6 +70,12 @@ class SensorService {
   // Throttle state
   DateTime? _lastSampleTime;
 
+  // Calibrated axis mapping (0=x, 1=y, 2=z)
+  int _longAxis = 1; // default: y is longitudinal
+  int _latAxis = 0;  // default: x is lateral
+  int _longSign = 1; // +1 or -1
+  int _latSign = 1;  // +1 or -1
+
   // Per-axis state machine fields
   // Corner
   bool _inCorner = false;
@@ -92,8 +98,68 @@ class SensorService {
   final List<BrakeEvent> _brakeEvents = [];
   final List<AccelEvent> _accelEvents = [];
 
-  void startTracking() {
+  /// Calibrates axis mapping over 3 seconds, then begins tracking.
+  /// Returns after calibration is complete.
+  Future<void> startTracking() async {
+    // --- Calibration phase: sample for 3 seconds to find gravity axis ---
+    final List<List<double>> calibSamples = [];
+    final calibCompleter = Completer<void>();
+    StreamSubscription<UserAccelerometerEvent>? calibSub;
+
+    calibSub = userAccelerometerEventStream().listen((event) {
+      calibSamples.add([event.x, event.y, event.z]);
+    });
+
+    await Future.delayed(const Duration(seconds: 3));
+    await calibSub.cancel();
+
+    if (calibSamples.isNotEmpty) {
+      final n = calibSamples.length.toDouble();
+      final meanX = calibSamples.map((s) => s[0]).reduce((a, b) => a + b) / n;
+      final meanY = calibSamples.map((s) => s[1]).reduce((a, b) => a + b) / n;
+      final meanZ = calibSamples.map((s) => s[2]).reduce((a, b) => a + b) / n;
+
+      final absX = meanX.abs();
+      final absY = meanY.abs();
+      final absZ = meanZ.abs();
+
+      // Axis with highest absolute mean is gravity axis (ignore for motion).
+      // Second highest → longitudinal; lowest → lateral.
+      final axes = [
+        (axis: 0, abs: absX, mean: meanX),
+        (axis: 1, abs: absY, mean: meanY),
+        (axis: 2, abs: absZ, mean: meanZ),
+      ]..sort((a, b) => b.abs.compareTo(a.abs));
+
+      // axes[0] = gravity axis (highest abs), axes[1] = longitudinal, axes[2] = lateral
+      final longEntry = axes[1];
+      final latEntry = axes[2];
+
+      _longAxis = longEntry.axis;
+      _longSign = longEntry.mean >= 0 ? 1 : -1;
+      _latAxis = latEntry.axis;
+      _latSign = latEntry.mean >= 0 ? 1 : -1;
+    }
+
+    calibCompleter.complete();
+
+    // --- Tracking phase: 20 Hz throttled stream ---
     _sub = userAccelerometerEventStream().listen(_onSample);
+
+    await calibCompleter.future;
+  }
+
+  double _axisValue(UserAccelerometerEvent event, int axis) {
+    switch (axis) {
+      case 0:
+        return event.x;
+      case 1:
+        return event.y;
+      case 2:
+        return event.z;
+      default:
+        return event.x;
+    }
   }
 
   void _onSample(UserAccelerometerEvent event) {
@@ -106,24 +172,27 @@ class SensorService {
     }
     _lastSampleTime = now;
 
-    final xG = event.x / _gConstant;
-    final yG = event.y / _gConstant;
+    final longRaw = _axisValue(event, _longAxis) * _longSign;
+    final latRaw = _axisValue(event, _latAxis) * _latSign;
 
-    _processCorner(xG, now);
-    _processBrake(yG, now);
-    _processAccel(yG, now);
+    final longG = longRaw / _gConstant;
+    final latG = latRaw / _gConstant;
+
+    _processCorner(latG, now);
+    _processBrake(longG, now);
+    _processAccel(longG, now);
   }
 
-  void _processCorner(double xG, DateTime now) {
-    final absX = xG.abs();
-    if (absX > _cornerThresholdG) {
+  void _processCorner(double latG, DateTime now) {
+    final absLat = latG.abs();
+    if (absLat > _cornerThresholdG) {
       if (!_inCorner) {
         _inCorner = true;
         _cornerStart = now;
-        _cornerPeak = absX;
-        _cornerIsRight = xG > 0;
+        _cornerPeak = absLat;
+        _cornerIsRight = latG > 0;
       } else {
-        if (absX > _cornerPeak) _cornerPeak = absX;
+        if (absLat > _cornerPeak) _cornerPeak = absLat;
       }
     } else {
       if (_inCorner) {
@@ -137,16 +206,16 @@ class SensorService {
     }
   }
 
-  void _processBrake(double yG, DateTime now) {
-    // Braking: y < -threshold (deceleration)
-    if (yG < -_brakeThresholdG) {
-      final absY = yG.abs();
+  void _processBrake(double longG, DateTime now) {
+    // Braking: longitudinal < -threshold (deceleration)
+    if (longG < -_brakeThresholdG) {
+      final absLong = longG.abs();
       if (!_inBrake) {
         _inBrake = true;
         _brakeStart = now;
-        _brakePeak = absY;
+        _brakePeak = absLong;
       } else {
-        if (absY > _brakePeak) _brakePeak = absY;
+        if (absLong > _brakePeak) _brakePeak = absLong;
       }
     } else {
       if (_inBrake) {
@@ -160,15 +229,15 @@ class SensorService {
     }
   }
 
-  void _processAccel(double yG, DateTime now) {
-    // Acceleration: y > +threshold
-    if (yG > _accelThresholdG) {
+  void _processAccel(double longG, DateTime now) {
+    // Acceleration: longitudinal > +threshold
+    if (longG > _accelThresholdG) {
       if (!_inAccel) {
         _inAccel = true;
         _accelStart = now;
-        _accelPeak = yG;
+        _accelPeak = longG;
       } else {
-        if (yG > _accelPeak) _accelPeak = yG;
+        if (longG > _accelPeak) _accelPeak = longG;
       }
     } else {
       if (_inAccel) {
@@ -250,6 +319,10 @@ class SensorService {
     _sub?.cancel();
     _sub = null;
     _lastSampleTime = null;
+    _longAxis = 1;
+    _latAxis = 0;
+    _longSign = 1;
+    _latSign = 1;
     _inCorner = false;
     _cornerStart = null;
     _cornerPeak = 0.0;

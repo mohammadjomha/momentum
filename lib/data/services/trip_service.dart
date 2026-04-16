@@ -21,7 +21,7 @@ class TripService {
 
   void startTrip() {
     _sensorService.reset();
-    _sensorService.startTracking();
+    // Sensor tracking is started externally (with calibration) by the provider.
     _currentTrip = TripData.initial();
     _lastPosition = null;
     _speedSamples.clear();
