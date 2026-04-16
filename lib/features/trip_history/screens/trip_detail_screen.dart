@@ -34,13 +34,30 @@ class TripDetailScreen extends StatelessWidget {
           children: [
             _TopBar(trip: trip),
             Expanded(
-              flex: 3,
-              child: hasRoute
-                  ? _RouteMap(points: points)
-                  : const _NoRouteCard(),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 500,
+                      child: hasRoute
+                          ? _RouteMap(points: points)
+                          : const _NoRouteCard(),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _StatsPanel(
+                        trip: trip, formatDuration: _formatDuration),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: _BrakingCard(trip: trip)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: _CorneringCard(trip: trip)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                  SliverToBoxAdapter(child: _AccelCard(trip: trip)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                ],
+              ),
             ),
-            _StatsPanel(trip: trip, formatDuration: _formatDuration),
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -56,26 +73,29 @@ class _TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded),
-            color: AppTheme.textPrimary,
-            iconSize: 18,
-          ),
-          const Text(
-            'TRIP DETAIL',
-            style: TextStyle(
-              color: AppTheme.accent,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 3,
+    return Container(
+      color: AppTheme.background,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded),
+              color: AppTheme.textPrimary,
+              iconSize: 18,
             ),
-          ),
-        ],
+            const Text(
+              'TRIP DETAIL',
+              style: TextStyle(
+                color: AppTheme.accent,
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 3,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -416,6 +436,225 @@ class _Divider extends StatelessWidget {
       width: 1,
       height: 40,
       color: AppTheme.accent.withValues(alpha: 0.15),
+    );
+  }
+}
+
+// ── Sensor cards ──────────────────────────────────────────────────────────────
+
+BoxDecoration _sensorCardDecoration() => BoxDecoration(
+      color: AppTheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: AppTheme.accent.withValues(alpha: 0.15),
+      ),
+    );
+
+class _SensorStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  const _SensorStat({
+    required this.label,
+    required this.value,
+    required this.unit,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              height: 1,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          Text(
+            unit.isNotEmpty ? unit : ' ',
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrakingCard extends StatelessWidget {
+  final TripModel trip;
+  const _BrakingCard({required this.trip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'BRAKING',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SensorStat(
+                label: 'HARD BRAKES',
+                value: '${trip.hardBrakeCount}',
+                unit: '',
+              ),
+              _SensorStat(
+                label: 'PEAK BRAKE',
+                value: trip.peakBrakeG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+              _SensorStat(
+                label: 'AVG BRAKE',
+                value: trip.avgBrakeG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CorneringCard extends StatelessWidget {
+  final TripModel trip;
+  const _CorneringCard({required this.trip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'CORNERING',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SensorStat(
+                label: 'TOTAL CORNERS',
+                value: '${trip.totalCornerCount}',
+                unit: '',
+              ),
+              _SensorStat(
+                label: 'RIGHT CORNERS',
+                value: '${trip.rightCornerCount}',
+                unit: '',
+              ),
+              _SensorStat(
+                label: 'LEFT CORNERS',
+                value: '${trip.leftCornerCount}',
+                unit: '',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SensorStat(
+                label: 'SHARPEST',
+                value: trip.sharpestCornerG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+              _SensorStat(
+                label: 'AVG CORNER',
+                value: trip.avgCorneringG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccelCard extends StatelessWidget {
+  final TripModel trip;
+  const _AccelCard({required this.trip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'ACCELERATION',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _SensorStat(
+                label: 'HARD ACCELS',
+                value: '${trip.hardAccelCount}',
+                unit: '',
+              ),
+              _SensorStat(
+                label: 'PEAK ACCEL',
+                value: trip.peakAccelG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+              _SensorStat(
+                label: 'AVG ACCEL',
+                value: trip.avgAccelG.toStringAsFixed(2),
+                unit: 'G',
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

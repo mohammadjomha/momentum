@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../data/models/trip_data.dart';
 import '../../../data/services/location_service.dart';
+import '../../../data/services/sensor_service.dart';
 import '../../../data/services/trip_service.dart';
 import '../../../data/services/trip_storage_service.dart';
 import '../../trip_history/models/trip_model.dart';
@@ -44,6 +46,9 @@ class TrackingState {
     );
   }
 }
+
+/// Global key used to show SnackBars from the provider without a BuildContext.
+final scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
 class TrackingNotifier extends StateNotifier<TrackingState> {
   final LocationService _locationService;
@@ -88,6 +93,15 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       await _locationService.startTracking();
       _tripService.startTrip();
 
+      scaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Keep your phone upright and still for accurate G-force data',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+
       _positionSub = _locationService.positionStream.listen(
         (position) {
           _tripService.updatePosition(position);
@@ -121,9 +135,21 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     _tripDataSub = null;
 
     await _locationService.stopTracking();
-    _tripService.stopTrip();
+    final SensorSummary summary = await _tripService.stopTrip();
 
-    final tripData = state.tripData;
+    final tripData = state.tripData.copyWith(
+      hardBrakeCount: summary.hardBrakeCount,
+      peakBrakeG: summary.peakBrakeG,
+      avgBrakeG: summary.avgBrakeG,
+      hardAccelCount: summary.hardAccelCount,
+      peakAccelG: summary.peakAccelG,
+      avgAccelG: summary.avgAccelG,
+      totalCornerCount: summary.totalCornerCount,
+      rightCornerCount: summary.rightCornerCount,
+      leftCornerCount: summary.leftCornerCount,
+      sharpestCornerG: summary.sharpestCornerG,
+      avgCorneringG: summary.avgCorneringG,
+    );
     final routeSnapshot = List<RoutePoint>.from(_routePoints);
     _routePoints.clear();
 

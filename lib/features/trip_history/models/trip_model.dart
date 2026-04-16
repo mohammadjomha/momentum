@@ -31,6 +31,19 @@ class TripModel {
   final Duration duration;
   final List<RoutePoint> route;
 
+  // Sensor fields — default to 0 for trips recorded before sensor support
+  final int hardBrakeCount;
+  final double peakBrakeG;
+  final double avgBrakeG;
+  final int hardAccelCount;
+  final double peakAccelG;
+  final double avgAccelG;
+  final int totalCornerCount;
+  final int rightCornerCount;
+  final int leftCornerCount;
+  final double sharpestCornerG;
+  final double avgCorneringG;
+
   const TripModel({
     required this.id,
     required this.uid,
@@ -41,6 +54,17 @@ class TripModel {
     required this.distance,
     required this.duration,
     required this.route,
+    this.hardBrakeCount = 0,
+    this.peakBrakeG = 0.0,
+    this.avgBrakeG = 0.0,
+    this.hardAccelCount = 0,
+    this.peakAccelG = 0.0,
+    this.avgAccelG = 0.0,
+    this.totalCornerCount = 0,
+    this.rightCornerCount = 0,
+    this.leftCornerCount = 0,
+    this.sharpestCornerG = 0.0,
+    this.avgCorneringG = 0.0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -52,6 +76,17 @@ class TripModel {
         'distance': distance,
         'durationSeconds': duration.inSeconds,
         'route': route.map((p) => p.toMap()).toList(),
+        'hardBrakeCount': hardBrakeCount,
+        'peakBrakeG': peakBrakeG,
+        'avgBrakeG': avgBrakeG,
+        'hardAccelCount': hardAccelCount,
+        'peakAccelG': peakAccelG,
+        'avgAccelG': avgAccelG,
+        'totalCornerCount': totalCornerCount,
+        'rightCornerCount': rightCornerCount,
+        'leftCornerCount': leftCornerCount,
+        'sharpestCornerG': sharpestCornerG,
+        'avgCorneringG': avgCorneringG,
       };
 
   factory TripModel.fromDoc(DocumentSnapshot doc) {
@@ -69,6 +104,17 @@ class TripModel {
       distance: (m['distance'] as num).toDouble(),
       duration: Duration(seconds: (m['durationSeconds'] as num).toInt()),
       route: routeList,
+      hardBrakeCount: (m['hardBrakeCount'] as num?)?.toInt() ?? 0,
+      peakBrakeG: (m['peakBrakeG'] as num?)?.toDouble() ?? 0.0,
+      avgBrakeG: (m['avgBrakeG'] as num?)?.toDouble() ?? 0.0,
+      hardAccelCount: (m['hardAccelCount'] as num?)?.toInt() ?? 0,
+      peakAccelG: (m['peakAccelG'] as num?)?.toDouble() ?? 0.0,
+      avgAccelG: (m['avgAccelG'] as num?)?.toDouble() ?? 0.0,
+      totalCornerCount: (m['totalCornerCount'] as num?)?.toInt() ?? 0,
+      rightCornerCount: (m['rightCornerCount'] as num?)?.toInt() ?? 0,
+      leftCornerCount: (m['leftCornerCount'] as num?)?.toInt() ?? 0,
+      sharpestCornerG: (m['sharpestCornerG'] as num?)?.toDouble() ?? 0.0,
+      avgCorneringG: (m['avgCorneringG'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
