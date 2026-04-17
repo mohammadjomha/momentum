@@ -21,6 +21,7 @@ class TrackingState {
   final String? error;
   final bool gpsWeak;
   final int calibrationSecondsRemaining;
+  final SensorDebugState? sensorDebug;
 
   const TrackingState({
     required this.status,
@@ -28,6 +29,7 @@ class TrackingState {
     this.error,
     this.gpsWeak = false,
     this.calibrationSecondsRemaining = 0,
+    this.sensorDebug,
   });
 
   bool get isTracking => status == TrackingStatus.tracking;
@@ -39,6 +41,7 @@ class TrackingState {
     bool clearError = false,
     bool? gpsWeak,
     int? calibrationSecondsRemaining,
+    SensorDebugState? sensorDebug,
   }) {
     return TrackingState(
       status: status ?? this.status,
@@ -47,6 +50,7 @@ class TrackingState {
       gpsWeak: gpsWeak ?? this.gpsWeak,
       calibrationSecondsRemaining:
           calibrationSecondsRemaining ?? this.calibrationSecondsRemaining,
+      sensorDebug: sensorDebug ?? this.sensorDebug,
     );
   }
 }
@@ -155,6 +159,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         (tripData) => state = state.copyWith(
           tripData: tripData,
           gpsWeak: _tripService.lastReadingInvalid,
+          sensorDebug: _sensorService.debugState,
         ),
       );
 

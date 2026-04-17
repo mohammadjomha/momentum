@@ -54,6 +54,34 @@ class SensorSummary {
   });
 }
 
+class SensorDebugState {
+  final double rawX;
+  final double rawY;
+  final double rawZ;
+  final double longitudinalG;
+  final double lateralG;
+  final String brakeState;
+  final String accelState;
+  final String cornerState;
+  final int hardBrakeCount;
+  final int hardAccelCount;
+  final int totalCornerCount;
+
+  const SensorDebugState({
+    this.rawX = 0,
+    this.rawY = 0,
+    this.rawZ = 0,
+    this.longitudinalG = 0,
+    this.lateralG = 0,
+    this.brakeState = 'idle',
+    this.accelState = 'idle',
+    this.cornerState = 'idle',
+    this.hardBrakeCount = 0,
+    this.hardAccelCount = 0,
+    this.totalCornerCount = 0,
+  });
+}
+
 class SensorService {
   static const double _gConstant = 9.81;
 
@@ -99,6 +127,10 @@ class SensorService {
   final List<CornerEvent> _cornerEvents = [];
   final List<BrakeEvent> _brakeEvents = [];
   final List<AccelEvent> _accelEvents = [];
+
+  // Debug state — updated on every sample tick
+  SensorDebugState _debugState = const SensorDebugState(); // ignore: prefer_final_fields
+  SensorDebugState get debugState => _debugState;
 
   /// Calibrates axis mapping over 3 seconds, then begins tracking.
   /// Returns after calibration is complete.
@@ -190,6 +222,20 @@ class SensorService {
     _processCorner(latG, now);
     _processBrake(longG, now);
     _processAccel(longG, now);
+
+    _debugState = SensorDebugState(
+      rawX: event.x,
+      rawY: event.y,
+      rawZ: event.z,
+      longitudinalG: longG,
+      lateralG: latG,
+      brakeState: _inBrake ? 'active' : 'idle',
+      accelState: _inAccel ? 'active' : 'idle',
+      cornerState: _inCorner ? 'active' : 'idle',
+      hardBrakeCount: _brakeEvents.length,
+      hardAccelCount: _accelEvents.length,
+      totalCornerCount: _cornerEvents.length,
+    );
   }
 
   void _processCorner(double latG, DateTime now) {

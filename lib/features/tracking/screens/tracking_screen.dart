@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/trip_data.dart';
+import '../../../data/services/sensor_service.dart';
 import '../../../presentation/widgets/speedometer_widget.dart';
 import '../providers/tracking_provider.dart';
 import '../widgets/gps_status_indicator.dart';
@@ -46,6 +47,10 @@ class TrackingScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               _StatsRow(tripData: state.tripData),
+              if (state.isTracking && state.sensorDebug != null) ...[
+                const SizedBox(height: 10),
+                _SensorDebugPanel(debug: state.sensorDebug!),
+              ],
               const SizedBox(height: 20),
               _ControlButton(state: state, ref: ref),
               const SizedBox(height: 24),
@@ -232,6 +237,14 @@ class _AnimatedSpeedometerState extends State<_AnimatedSpeedometer>
   @override
   void didUpdateWidget(_AnimatedSpeedometer old) {
     super.didUpdateWidget(old);
+    // Snap immediately to zero when tracking stops so no stale speed lingers.
+    if (old.isTracking && !widget.isTracking) {
+      setState(() {
+        _displayedSpeed = 0.0;
+        _targetSpeed = 0.0;
+      });
+      return;
+    }
     _targetSpeed = widget.speed;
   }
 
@@ -345,6 +358,41 @@ class _StatCard extends StatelessWidget {
               letterSpacing: 0.5,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Sensor debug panel (temporary) ───────────────────────────────────────────
+
+class _SensorDebugPanel extends StatelessWidget {
+  final SensorDebugState debug;
+  const _SensorDebugPanel({required this.debug});
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(
+      color: AppTheme.accent,
+      fontSize: 11,
+      fontFamily: 'monospace',
+      height: 1.6,
+    );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0A0A),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.accent, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('RAW  x:${debug.rawX.toStringAsFixed(3)}  y:${debug.rawY.toStringAsFixed(3)}  z:${debug.rawZ.toStringAsFixed(3)} m/s²', style: style),
+          Text('LONG_G: ${debug.longitudinalG.toStringAsFixed(3)}  LAT_G: ${debug.lateralG.toStringAsFixed(3)}', style: style),
+          Text('BRAKE:${debug.brakeState}  ACCEL:${debug.accelState}  CORNER:${debug.cornerState}', style: style),
+          Text('brakes:${debug.hardBrakeCount}  accels:${debug.hardAccelCount}  corners:${debug.totalCornerCount}', style: style),
         ],
       ),
     );
