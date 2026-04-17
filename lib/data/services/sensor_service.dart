@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:developer' as developer;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 class SensorEvent {
@@ -101,6 +103,13 @@ class SensorService {
   /// Calibrates axis mapping over 3 seconds, then begins tracking.
   /// Returns after calibration is complete.
   Future<void> startTracking() async {
+    // --- Permission check (iOS requires explicit motion permission) ---
+    final status = await Permission.sensors.request();
+    if (!status.isGranted) {
+      developer.log('Motion permission not granted: $status', name: 'SensorService');
+      return;
+    }
+
     // --- Calibration phase: sample for 3 seconds to find gravity axis ---
     final List<List<double>> calibSamples = [];
     final calibCompleter = Completer<void>();
