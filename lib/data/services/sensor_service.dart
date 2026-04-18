@@ -84,8 +84,9 @@ class SensorService {
   static const double _gConstant = 9.81;
 
   // Thresholds
-  static const double _hardEventThresholdG = 0.25;
-  static const double _cornerThresholdG = 0.15;
+  static const double _hardEventThresholdG = 0.18;
+  static const double _cornerThresholdG = 0.25;
+  static const double _cornerMinSpeedKmh = 15.0;
 
   // Minimum sustained durations
   static const Duration _hardEventMinDuration = Duration(milliseconds: 150);
@@ -209,7 +210,7 @@ class SensorService {
     } else {
       if (_inCorner) {
         final duration = now.difference(_cornerStart!);
-        if (duration >= _cornerMinDuration) {
+        if (duration >= _cornerMinDuration && _lastSpeedKmh >= _cornerMinSpeedKmh) {
           _cornerEvents.add(CornerEvent(_cornerPeak));
         }
         _inCorner = false;
