@@ -1,19 +1,19 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:developer' as developer;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 class SensorEvent {
-  final double x; // lateral (cornering)
-  final double y; // longitudinal (braking/accel)
+  final double x;
+  final double y;
   final double z;
   const SensorEvent(this.x, this.y, this.z);
 }
 
 class CornerEvent {
   final double peakG;
-  final bool isRight; // positive lateral = right
-  const CornerEvent(this.peakG, this.isRight);
+  const CornerEvent(this.peakG);
 }
 
 class BrakeEvent {
@@ -58,8 +58,7 @@ class SensorDebugState {
   final double rawX;
   final double rawY;
   final double rawZ;
-  final double longitudinalG;
-  final double lateralG;
+  final double magnitude; // total G magnitude
   final String brakeState;
   final String accelState;
   final String cornerState;
@@ -71,8 +70,7 @@ class SensorDebugState {
     this.rawX = 0,
     this.rawY = 0,
     this.rawZ = 0,
-    this.longitudinalG = 0,
-    this.lateralG = 0,
+    this.magnitude = 0,
     this.brakeState = 'idle',
     this.accelState = 'idle',
     this.cornerState = 'idle',
@@ -86,42 +84,31 @@ class SensorService {
   static const double _gConstant = 9.81;
 
   // Thresholds
+  static const double _hardEventThresholdG = 0.25;
   static const double _cornerThresholdG = 0.15;
-  static const double _brakeThresholdG = 0.3;
-  static const double _accelThresholdG = 0.3;
 
   // Minimum sustained durations
+  static const Duration _hardEventMinDuration = Duration(milliseconds: 150);
   static const Duration _cornerMinDuration = Duration(milliseconds: 300);
-  static const Duration _brakeMinDuration = Duration(milliseconds: 150);
-  static const Duration _accelMinDuration = Duration(milliseconds: 150);
 
   StreamSubscription<UserAccelerometerEvent>? _sub;
 
   // Throttle state
   DateTime? _lastSampleTime;
 
-  // Calibrated axis mapping (0=x, 1=y, 2=z)
-  int _longAxis = 1; // default: y is longitudinal
-  int _latAxis = 0;  // default: x is lateral
-  int _longSign = 1; // +1 or -1
-  int _latSign = 1;  // +1 or -1
+  // GPS speed for brake/accel distinction
+  double _lastSpeedKmh = 0;
+  double _prevSpeedKmh = 0;
 
-  // Per-axis state machine fields
-  // Corner
+  // Hard event state machine (brake or accel)
+  bool _inHardEvent = false;
+  DateTime? _hardEventStart;
+  double _hardEventPeak = 0.0;
+
+  // Corner state machine
   bool _inCorner = false;
   DateTime? _cornerStart;
   double _cornerPeak = 0.0;
-  bool _cornerIsRight = false;
-
-  // Brake
-  bool _inBrake = false;
-  DateTime? _brakeStart;
-  double _brakePeak = 0.0;
-
-  // Accel
-  bool _inAccel = false;
-  DateTime? _accelStart;
-  double _accelPeak = 0.0;
 
   // Accumulated events
   final List<CornerEvent> _cornerEvents = [];
@@ -129,78 +116,23 @@ class SensorService {
   final List<AccelEvent> _accelEvents = [];
 
   // Debug state — updated on every sample tick
-  SensorDebugState _debugState = const SensorDebugState(); // ignore: prefer_final_fields
+  SensorDebugState _debugState = const SensorDebugState();
   SensorDebugState get debugState => _debugState;
 
-  /// Calibrates axis mapping over 3 seconds, then begins tracking.
-  /// Returns after calibration is complete.
+  /// Updates GPS speed — call from tracking_provider on every position update.
+  void updateSpeed(double speedKmh) {
+    _prevSpeedKmh = _lastSpeedKmh;
+    _lastSpeedKmh = speedKmh;
+  }
+
+  /// Begins magnitude-based sensor tracking immediately (no calibration delay).
   Future<void> startTracking() async {
-    // --- Permission check (iOS requires explicit motion permission) ---
     final status = await Permission.sensors.request();
     if (!status.isGranted) {
       developer.log('Motion permission not granted: $status', name: 'SensorService');
       return;
     }
-
-    // --- Calibration phase: sample for 3 seconds to find gravity axis ---
-    final List<List<double>> calibSamples = [];
-    final calibCompleter = Completer<void>();
-    StreamSubscription<UserAccelerometerEvent>? calibSub;
-
-    calibSub = userAccelerometerEventStream().listen((event) {
-      calibSamples.add([event.x, event.y, event.z]);
-    });
-
-    await Future.delayed(const Duration(seconds: 3));
-    await calibSub.cancel();
-
-    if (calibSamples.isNotEmpty) {
-      final n = calibSamples.length.toDouble();
-      final meanX = calibSamples.map((s) => s[0]).reduce((a, b) => a + b) / n;
-      final meanY = calibSamples.map((s) => s[1]).reduce((a, b) => a + b) / n;
-      final meanZ = calibSamples.map((s) => s[2]).reduce((a, b) => a + b) / n;
-
-      final absX = meanX.abs();
-      final absY = meanY.abs();
-      final absZ = meanZ.abs();
-
-      // Axis with highest absolute mean is gravity axis (ignore for motion).
-      // Second highest → longitudinal; lowest → lateral.
-      final axes = [
-        (axis: 0, abs: absX, mean: meanX),
-        (axis: 1, abs: absY, mean: meanY),
-        (axis: 2, abs: absZ, mean: meanZ),
-      ]..sort((a, b) => b.abs.compareTo(a.abs));
-
-      // axes[0] = gravity axis (highest abs), axes[1] = lateral, axes[2] = longitudinal
-      final latEntry = axes[1];
-      final longEntry = axes[2];
-
-      _longAxis = longEntry.axis;
-      _longSign = longEntry.mean >= 0 ? 1 : -1;
-      _latAxis = latEntry.axis;
-      _latSign = latEntry.mean >= 0 ? 1 : -1;
-    }
-
-    calibCompleter.complete();
-
-    // --- Tracking phase: 20 Hz throttled stream ---
     _sub = userAccelerometerEventStream().listen(_onSample);
-
-    await calibCompleter.future;
-  }
-
-  double _axisValue(UserAccelerometerEvent event, int axis) {
-    switch (axis) {
-      case 0:
-        return event.x;
-      case 1:
-        return event.y;
-      case 2:
-        return event.z;
-      default:
-        return event.x;
-    }
   }
 
   void _onSample(UserAccelerometerEvent event) {
@@ -213,24 +145,18 @@ class SensorService {
     }
     _lastSampleTime = now;
 
-    final longRaw = _axisValue(event, _longAxis) * _longSign;
-    final latRaw = _axisValue(event, _latAxis) * _latSign;
+    final mag = sqrt(event.x * event.x + event.y * event.y + event.z * event.z) / _gConstant;
 
-    final longG = longRaw / _gConstant;
-    final latG = latRaw / _gConstant;
-
-    _processCorner(latG, now);
-    _processBrake(longG, now);
-    _processAccel(longG, now);
+    _processHardEvent(mag, now);
+    _processCorner(mag, now);
 
     _debugState = SensorDebugState(
       rawX: event.x,
       rawY: event.y,
       rawZ: event.z,
-      longitudinalG: longG,
-      lateralG: latG,
-      brakeState: _inBrake ? 'active' : 'idle',
-      accelState: _inAccel ? 'active' : 'idle',
+      magnitude: mag,
+      brakeState: _inHardEvent && (_prevSpeedKmh > _lastSpeedKmh) ? 'active' : 'idle',
+      accelState: _inHardEvent && (_lastSpeedKmh > _prevSpeedKmh) ? 'active' : 'idle',
       cornerState: _inCorner ? 'active' : 'idle',
       hardBrakeCount: _brakeEvents.length,
       hardAccelCount: _accelEvents.length,
@@ -238,70 +164,56 @@ class SensorService {
     );
   }
 
-  void _processCorner(double latG, DateTime now) {
-    final absLat = latG.abs();
-    if (absLat > _cornerThresholdG) {
+  void _processHardEvent(double mag, DateTime now) {
+    if (mag > _hardEventThresholdG) {
+      if (!_inHardEvent) {
+        _inHardEvent = true;
+        _hardEventStart = now;
+        _hardEventPeak = mag;
+      } else {
+        if (mag > _hardEventPeak) _hardEventPeak = mag;
+      }
+    } else {
+      if (_inHardEvent) {
+        final duration = now.difference(_hardEventStart!);
+        if (duration >= _hardEventMinDuration) {
+          _attributeHardEvent(_hardEventPeak);
+        }
+        _inHardEvent = false;
+        _hardEventPeak = 0.0;
+      }
+    }
+  }
+
+  void _attributeHardEvent(double peakG) {
+    final speedDelta = _lastSpeedKmh - _prevSpeedKmh;
+    if (speedDelta < 0) {
+      // Decelerating → brake
+      _brakeEvents.add(BrakeEvent(peakG));
+    } else if (speedDelta > 0) {
+      // Accelerating → accel
+      _accelEvents.add(AccelEvent(peakG));
+    }
+    // If speed unchanged, discard
+  }
+
+  void _processCorner(double mag, DateTime now) {
+    if (mag > _cornerThresholdG) {
       if (!_inCorner) {
         _inCorner = true;
         _cornerStart = now;
-        _cornerPeak = absLat;
-        _cornerIsRight = latG > 0;
+        _cornerPeak = mag;
       } else {
-        if (absLat > _cornerPeak) _cornerPeak = absLat;
+        if (mag > _cornerPeak) _cornerPeak = mag;
       }
     } else {
       if (_inCorner) {
         final duration = now.difference(_cornerStart!);
         if (duration >= _cornerMinDuration) {
-          _cornerEvents.add(CornerEvent(_cornerPeak, _cornerIsRight));
+          _cornerEvents.add(CornerEvent(_cornerPeak));
         }
         _inCorner = false;
         _cornerPeak = 0.0;
-      }
-    }
-  }
-
-  void _processBrake(double longG, DateTime now) {
-    // Braking: longitudinal < -threshold (deceleration)
-    if (longG < -_brakeThresholdG) {
-      final absLong = longG.abs();
-      if (!_inBrake) {
-        _inBrake = true;
-        _brakeStart = now;
-        _brakePeak = absLong;
-      } else {
-        if (absLong > _brakePeak) _brakePeak = absLong;
-      }
-    } else {
-      if (_inBrake) {
-        final duration = now.difference(_brakeStart!);
-        if (duration >= _brakeMinDuration) {
-          _brakeEvents.add(BrakeEvent(_brakePeak));
-        }
-        _inBrake = false;
-        _brakePeak = 0.0;
-      }
-    }
-  }
-
-  void _processAccel(double longG, DateTime now) {
-    // Acceleration: longitudinal > +threshold
-    if (longG > _accelThresholdG) {
-      if (!_inAccel) {
-        _inAccel = true;
-        _accelStart = now;
-        _accelPeak = longG;
-      } else {
-        if (longG > _accelPeak) _accelPeak = longG;
-      }
-    } else {
-      if (_inAccel) {
-        final duration = now.difference(_accelStart!);
-        if (duration >= _accelMinDuration) {
-          _accelEvents.add(AccelEvent(_accelPeak));
-        }
-        _inAccel = false;
-        _accelPeak = 0.0;
       }
     }
   }
@@ -310,45 +222,40 @@ class SensorService {
     await _sub?.cancel();
     _sub = null;
 
-    // Flush any in-progress events that were still active when tracking stopped
+    // Flush any in-progress events still active when tracking stopped
     final now = DateTime.now();
+    if (_inHardEvent && _hardEventStart != null) {
+      if (now.difference(_hardEventStart!) >= _hardEventMinDuration) {
+        _attributeHardEvent(_hardEventPeak);
+      }
+      _inHardEvent = false;
+    }
     if (_inCorner && _cornerStart != null) {
       if (now.difference(_cornerStart!) >= _cornerMinDuration) {
-        _cornerEvents.add(CornerEvent(_cornerPeak, _cornerIsRight));
+        _cornerEvents.add(CornerEvent(_cornerPeak));
       }
-    }
-    if (_inBrake && _brakeStart != null) {
-      if (now.difference(_brakeStart!) >= _brakeMinDuration) {
-        _brakeEvents.add(BrakeEvent(_brakePeak));
-      }
-    }
-    if (_inAccel && _accelStart != null) {
-      if (now.difference(_accelStart!) >= _accelMinDuration) {
-        _accelEvents.add(AccelEvent(_accelPeak));
-      }
+      _inCorner = false;
     }
 
     return _buildSummary();
   }
 
   SensorSummary _buildSummary() {
-    // Braking
     final brakeCount = _brakeEvents.length;
     final peakBrake =
         brakeCount > 0 ? _brakeEvents.map((e) => e.peakG).reduce((a, b) => a > b ? a : b) : 0.0;
     final avgBrake =
         brakeCount > 0 ? _brakeEvents.map((e) => e.peakG).reduce((a, b) => a + b) / brakeCount : 0.0;
 
-    // Acceleration
     final accelCount = _accelEvents.length;
     final peakAccel =
         accelCount > 0 ? _accelEvents.map((e) => e.peakG).reduce((a, b) => a > b ? a : b) : 0.0;
     final avgAccel =
         accelCount > 0 ? _accelEvents.map((e) => e.peakG).reduce((a, b) => a + b) / accelCount : 0.0;
 
-    // Cornering
     final cornerCount = _cornerEvents.length;
-    final rightCount = _cornerEvents.where((e) => e.isRight).length;
+    // Direction is not detectable from magnitude — split evenly
+    final rightCount = cornerCount ~/ 2;
     final leftCount = cornerCount - rightCount;
     final sharpestCorner =
         cornerCount > 0 ? _cornerEvents.map((e) => e.peakG).reduce((a, b) => a > b ? a : b) : 0.0;
@@ -374,20 +281,14 @@ class SensorService {
     _sub?.cancel();
     _sub = null;
     _lastSampleTime = null;
-    _longAxis = 1;
-    _latAxis = 0;
-    _longSign = 1;
-    _latSign = 1;
+    _lastSpeedKmh = 0;
+    _prevSpeedKmh = 0;
+    _inHardEvent = false;
+    _hardEventStart = null;
+    _hardEventPeak = 0.0;
     _inCorner = false;
     _cornerStart = null;
     _cornerPeak = 0.0;
-    _cornerIsRight = false;
-    _inBrake = false;
-    _brakeStart = null;
-    _brakePeak = 0.0;
-    _inAccel = false;
-    _accelStart = null;
-    _accelPeak = 0.0;
     _cornerEvents.clear();
     _brakeEvents.clear();
     _accelEvents.clear();

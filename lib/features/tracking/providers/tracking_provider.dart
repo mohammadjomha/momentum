@@ -13,14 +13,13 @@ import '../../../data/services/trip_storage_service.dart';
 import '../../trip_history/models/trip_model.dart';
 import '../../trip_history/services/trip_history_service.dart';
 
-enum TrackingStatus { idle, calibrating, tracking }
+enum TrackingStatus { idle, tracking }
 
 class TrackingState {
   final TrackingStatus status;
   final TripData tripData;
   final String? error;
   final bool gpsWeak;
-  final int calibrationSecondsRemaining;
   final SensorDebugState? sensorDebug;
 
   const TrackingState({
@@ -28,7 +27,6 @@ class TrackingState {
     required this.tripData,
     this.error,
     this.gpsWeak = false,
-    this.calibrationSecondsRemaining = 0,
     this.sensorDebug,
   });
 
@@ -40,7 +38,6 @@ class TrackingState {
     String? error,
     bool clearError = false,
     bool? gpsWeak,
-    int? calibrationSecondsRemaining,
     SensorDebugState? sensorDebug,
   }) {
     return TrackingState(
@@ -48,8 +45,6 @@ class TrackingState {
       tripData: tripData ?? this.tripData,
       error: clearError ? null : (error ?? this.error),
       gpsWeak: gpsWeak ?? this.gpsWeak,
-      calibrationSecondsRemaining:
-          calibrationSecondsRemaining ?? this.calibrationSecondsRemaining,
       sensorDebug: sensorDebug ?? this.sensorDebug,
     );
   }
@@ -64,7 +59,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
   StreamSubscription<Position>? _positionSub;
   StreamSubscription<TripData>? _tripDataSub;
-  Timer? _calibrationTimer;
 
   // Accumulated route points for the current trip
   final List<RoutePoint> _routePoints = [];
@@ -99,57 +93,20 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
       _routePoints.clear();
 
-      // Start GPS immediately — position stream begins flowing right away.
       await _locationService.startTracking();
-
-      _positionSub = _locationService.positionStream.listen(
-        (position) {
-          // Only accumulate route points; trip stats are deferred until
-          // calibration completes and startTrip() is called below.
-          _routePoints.add(RoutePoint(
-            lat: position.latitude,
-            lng: position.longitude,
-            speed: (position.speed * 3.6).clamp(0.0, 400.0),
-          ));
-        },
-        onError: (e) => state = state.copyWith(error: 'GPS error: $e'),
-      );
-
-      // Start calibration countdown UI (3 → 0) while sensor calibration runs.
-      state = state.copyWith(
-        status: TrackingStatus.calibrating,
-        calibrationSecondsRemaining: 3,
-      );
-
-      int remaining = 3;
-      _calibrationTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        remaining--;
-        state = state.copyWith(calibrationSecondsRemaining: remaining);
-        if (remaining <= 0) {
-          timer.cancel();
-          _calibrationTimer = null;
-        }
-      });
-
-      // Run sensor calibration (takes 3 seconds); GPS is already flowing.
       await _sensorService.startTracking();
 
-      // Cancel any still-running countdown timer after calibration resolves.
-      _calibrationTimer?.cancel();
-      _calibrationTimer = null;
-
-      // Now begin trip stat recording.
       _tripService.startTrip();
 
-      // Re-attach the position listener to also drive trip stats.
-      await _positionSub?.cancel();
       _positionSub = _locationService.positionStream.listen(
         (position) {
+          final speedKmh = (position.speed * 3.6).clamp(0.0, 400.0);
+          _sensorService.updateSpeed(speedKmh);
           _tripService.updatePosition(position);
           _routePoints.add(RoutePoint(
             lat: position.latitude,
             lng: position.longitude,
-            speed: (position.speed * 3.6).clamp(0.0, 400.0),
+            speed: speedKmh,
           ));
         },
         onError: (e) => state = state.copyWith(error: 'GPS error: $e'),
@@ -163,26 +120,16 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         ),
       );
 
-      state = state.copyWith(
-        status: TrackingStatus.tracking,
-        calibrationSecondsRemaining: 0,
-      );
+      state = state.copyWith(status: TrackingStatus.tracking);
     } catch (e) {
-      _calibrationTimer?.cancel();
-      _calibrationTimer = null;
       state = state.copyWith(
         status: TrackingStatus.idle,
         error: _friendlyError(e.toString()),
-        calibrationSecondsRemaining: 0,
       );
     }
   }
 
   Future<void> stopTracking() async {
-    _calibrationTimer?.cancel();
-    _calibrationTimer = null;
-
-    // Cancel subscriptions first so no more position updates come in
     await _positionSub?.cancel();
     await _tripDataSub?.cancel();
     _positionSub = null;
@@ -214,7 +161,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     );
 
     if (tripData.duration.inSeconds > 5) {
-      // Fire-and-forget saves (non-blocking)
       _storageService.saveTrip(tripData);
       _saveToFirestore(tripData, routeSnapshot);
     }
@@ -263,7 +209,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
 
   @override
   void dispose() {
-    _calibrationTimer?.cancel();
     _positionSub?.cancel();
     _tripDataSub?.cancel();
     _locationService.dispose();
