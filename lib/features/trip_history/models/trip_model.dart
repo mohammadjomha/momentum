@@ -39,6 +39,15 @@ class TripModel {
   final double peakAccelG;
   final double avgAccelG;
 
+  // Weather
+  final int weatherCode;
+  final String weatherLabel;
+  final double weatherTempC;
+  final double weatherMultiplier;
+
+  // Smoothness
+  final double smoothnessScore;
+
   const TripModel({
     required this.id,
     required this.uid,
@@ -55,6 +64,11 @@ class TripModel {
     this.hardAccelCount = 0,
     this.peakAccelG = 0.0,
     this.avgAccelG = 0.0,
+    this.weatherCode = 0,
+    this.weatherLabel = '',
+    this.weatherTempC = 0.0,
+    this.weatherMultiplier = 1.0,
+    this.smoothnessScore = 0.0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -72,6 +86,11 @@ class TripModel {
         'hardAccelCount': hardAccelCount,
         'peakAccelG': peakAccelG,
         'avgAccelG': avgAccelG,
+        'weatherCode': weatherCode,
+        'weatherLabel': weatherLabel,
+        'weatherTempC': weatherTempC,
+        'weatherMultiplier': weatherMultiplier,
+        'smoothnessScore': smoothnessScore,
       };
 
   factory TripModel.fromDoc(DocumentSnapshot doc) {
@@ -95,6 +114,11 @@ class TripModel {
       hardAccelCount: (m['hardAccelCount'] as num?)?.toInt() ?? 0,
       peakAccelG: (m['peakAccelG'] as num?)?.toDouble() ?? 0.0,
       avgAccelG: (m['avgAccelG'] as num?)?.toDouble() ?? 0.0,
+      weatherCode: (m['weatherCode'] as num?)?.toInt() ?? 0,
+      weatherLabel: m['weatherLabel'] as String? ?? '',
+      weatherTempC: (m['weatherTempC'] as num?)?.toDouble() ?? 0.0,
+      weatherMultiplier: (m['weatherMultiplier'] as num?)?.toDouble() ?? 1.0,
+      smoothnessScore: (m['smoothnessScore'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

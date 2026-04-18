@@ -18,7 +18,7 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
 - `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance
 - `lib/core/theme/app_theme.dart` — app theme
-- `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (underlying field remains `hardBrakeCount`)
+- `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, smoothness/weather/braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (field: `hardBrakeCount`); accel card label reads "Quick Accels" (field: `hardAccelCount`); card order: map → stats → smoothness → weather → braking → accel
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, sign out
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
 - `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state
@@ -101,14 +101,15 @@ lib/
 
 ### Smoothness score notes
 - Computed once at trip end, stored as `smoothnessScore` (double, 0–100) on the trip document
-- Base score formula (before weather multiplier):
+- Formula (in `_computeSmoothnessScore` inside `tracking_provider.dart`):
   - Start at 100
-  - Deduct per hard brake event: `-5` (capped at -40 total from braking)
-  - Deduct per hard accel event: `-3` (capped at -25 total from acceleration)
-  - Deduct based on peak brake G above 0.4G: `-(peakBrakeG - 0.4) * 20` (only if peakBrakeG > 0.4)
-  - Floor at 0 before applying weather multiplier
-- `finalScore = min(100.0, max(0.0, baseScore) * weatherMultiplier)`
+  - If peakBrakeG > 0.5G: deduct `(peakBrakeG - 0.5) * 30`
+  - If avgBrakeG > 0.25G: deduct `(avgBrakeG - 0.25) * 25`
+  - If peakAccelG > 0.6G: deduct `(peakAccelG - 0.6) * 20`
+  - Clamp to 0–100, then multiply by weatherMultiplier and clamp again
+- `finalScore = (score.clamp(0, 100) * weatherMultiplier).clamp(0, 100)`
 - Stored on trip document and used directly by leaderboard queries — not recomputed at read time
+- Displayed in trip detail as `_SmoothnessCard` (score ≥ 90 → "Excellent", ≥ 75 → "Good", ≥ 60 → "Average", < 60 → "Needs Work"); hidden when smoothnessScore == 0.0
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.

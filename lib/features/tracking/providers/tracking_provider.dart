@@ -10,6 +10,7 @@ import '../../../data/services/location_service.dart';
 import '../../../data/services/sensor_service.dart';
 import '../../../data/services/trip_service.dart';
 import '../../../data/services/trip_storage_service.dart';
+import '../../../data/services/weather_service.dart';
 import '../../trip_history/models/trip_model.dart';
 import '../../trip_history/services/trip_history_service.dart';
 
@@ -134,7 +135,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     final SensorSummary summary = await _sensorService.stopTracking();
     _tripService.stopTrip();
 
-    final tripData = state.tripData.copyWith(
+    TripData tripData = state.tripData.copyWith(
       hardBrakeCount: summary.hardBrakeCount,
       peakBrakeG: summary.peakBrakeG,
       avgBrakeG: summary.avgBrakeG,
@@ -144,6 +145,27 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     );
     final routeSnapshot = List<RoutePoint>.from(_routePoints);
     _routePoints.clear();
+
+    if (routeSnapshot.isNotEmpty) {
+      final mid = routeSnapshot[routeSnapshot.length ~/ 2];
+      final weather = await WeatherService().fetchForCoordinate(mid.lat, mid.lng);
+      if (weather != null) {
+        tripData = tripData.copyWith(
+          weatherCode: weather.weatherCode,
+          weatherLabel: weather.weatherLabel,
+          weatherTempC: weather.tempC,
+          weatherMultiplier: weather.multiplier,
+        );
+      }
+    }
+
+    final score = _computeSmoothnessScore(
+      peakBrakeG: tripData.peakBrakeG,
+      avgBrakeG: tripData.avgBrakeG,
+      peakAccelG: tripData.peakAccelG,
+      weatherMultiplier: tripData.weatherMultiplier,
+    );
+    tripData = tripData.copyWith(smoothnessScore: score);
 
     // Reset UI immediately — don't await saves
     state = TrackingState(
@@ -189,12 +211,31 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         hardAccelCount: tripData.hardAccelCount,
         peakAccelG: tripData.peakAccelG,
         avgAccelG: tripData.avgAccelG,
+        weatherCode: tripData.weatherCode,
+        weatherLabel: tripData.weatherLabel,
+        weatherTempC: tripData.weatherTempC,
+        weatherMultiplier: tripData.weatherMultiplier,
+        smoothnessScore: tripData.smoothnessScore,
       );
 
       await _historyService.saveTrip(trip);
     } catch (_) {
       // Firestore save failure is non-fatal — local save already done
     }
+  }
+
+  double _computeSmoothnessScore({
+    required double peakBrakeG,
+    required double avgBrakeG,
+    required double peakAccelG,
+    required double weatherMultiplier,
+  }) {
+    double score = 100.0;
+    if (peakBrakeG > 0.5) score -= (peakBrakeG - 0.5) * 30;
+    if (avgBrakeG > 0.25) score -= (avgBrakeG - 0.25) * 25;
+    if (peakAccelG > 0.6) score -= (peakAccelG - 0.6) * 20;
+    score = score.clamp(0.0, 100.0);
+    return (score * weatherMultiplier).clamp(0.0, 100.0);
   }
 
   String _friendlyError(String raw) {

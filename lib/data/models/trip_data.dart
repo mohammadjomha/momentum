@@ -17,6 +17,15 @@ class TripData {
   final double peakAccelG;
   final double avgAccelG;
 
+  // Weather
+  final int weatherCode;
+  final String weatherLabel;
+  final double weatherTempC;
+  final double weatherMultiplier;
+
+  // Smoothness
+  final double smoothnessScore;
+
   TripData({
     this.id,
     required this.currentSpeed,
@@ -31,6 +40,11 @@ class TripData {
     this.hardAccelCount = 0,
     this.peakAccelG = 0.0,
     this.avgAccelG = 0.0,
+    this.weatherCode = 0,
+    this.weatherLabel = '',
+    this.weatherTempC = 0.0,
+    this.weatherMultiplier = 1.0,
+    this.smoothnessScore = 0.0,
   });
 
   TripData copyWith({
@@ -47,6 +61,11 @@ class TripData {
     int? hardAccelCount,
     double? peakAccelG,
     double? avgAccelG,
+    int? weatherCode,
+    String? weatherLabel,
+    double? weatherTempC,
+    double? weatherMultiplier,
+    double? smoothnessScore,
   }) {
     return TripData(
       id: id ?? this.id,
@@ -62,6 +81,11 @@ class TripData {
       hardAccelCount: hardAccelCount ?? this.hardAccelCount,
       peakAccelG: peakAccelG ?? this.peakAccelG,
       avgAccelG: avgAccelG ?? this.avgAccelG,
+      weatherCode: weatherCode ?? this.weatherCode,
+      weatherLabel: weatherLabel ?? this.weatherLabel,
+      weatherTempC: weatherTempC ?? this.weatherTempC,
+      weatherMultiplier: weatherMultiplier ?? this.weatherMultiplier,
+      smoothnessScore: smoothnessScore ?? this.smoothnessScore,
     );
   }
 
@@ -90,6 +114,11 @@ class TripData {
       'hardAccelCount': hardAccelCount,
       'peakAccelG': peakAccelG,
       'avgAccelG': avgAccelG,
+      'weatherCode': weatherCode,
+      'weatherLabel': weatherLabel,
+      'weatherTempC': weatherTempC,
+      'weatherMultiplier': weatherMultiplier,
+      'smoothnessScore': smoothnessScore,
     };
   }
 
@@ -108,6 +137,11 @@ class TripData {
       hardAccelCount: (json['hardAccelCount'] as num?)?.toInt() ?? 0,
       peakAccelG: (json['peakAccelG'] as num?)?.toDouble() ?? 0.0,
       avgAccelG: (json['avgAccelG'] as num?)?.toDouble() ?? 0.0,
+      weatherCode: (json['weatherCode'] as num?)?.toInt() ?? 0,
+      weatherLabel: json['weatherLabel'] as String? ?? '',
+      weatherTempC: (json['weatherTempC'] as num?)?.toDouble() ?? 0.0,
+      weatherMultiplier: (json['weatherMultiplier'] as num?)?.toDouble() ?? 1.0,
+      smoothnessScore: (json['smoothnessScore'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

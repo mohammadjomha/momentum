@@ -48,6 +48,14 @@ class TripDetailScreen extends StatelessWidget {
                     child: _StatsPanel(
                         trip: trip, formatDuration: _formatDuration),
                   ),
+                  if (trip.smoothnessScore > 0.0) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    SliverToBoxAdapter(child: _SmoothnessCard(trip: trip)),
+                  ],
+                  if (trip.weatherLabel.isNotEmpty) ...[
+                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                    SliverToBoxAdapter(child: _WeatherCard(trip: trip)),
+                  ],
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
                   SliverToBoxAdapter(child: _BrakingCard(trip: trip)),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
@@ -572,7 +580,7 @@ class _AccelCard extends StatelessWidget {
           Row(
             children: [
               _SensorStat(
-                label: 'HARD ACCELS',
+                label: 'QUICK ACCELS',
                 value: '${trip.hardAccelCount}',
                 unit: '',
               ),
@@ -585,6 +593,140 @@ class _AccelCard extends StatelessWidget {
                 label: 'AVG ACCEL',
                 value: trip.avgAccelG.toStringAsFixed(2),
                 unit: 'G',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SmoothnessCard extends StatelessWidget {
+  final TripModel trip;
+  const _SmoothnessCard({required this.trip});
+
+  String _descriptor(double score) {
+    if (score >= 90) return 'Excellent';
+    if (score >= 75) return 'Good';
+    if (score >= 60) return 'Average';
+    return 'Needs Work';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'SMOOTHNESS SCORE',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                trip.smoothnessScore.toStringAsFixed(1),
+                style: const TextStyle(
+                  color: AppTheme.accent,
+                  fontSize: 48,
+                  fontWeight: FontWeight.w800,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  _descriptor(trip.smoothnessScore),
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeatherCard extends StatelessWidget {
+  final TripModel trip;
+  const _WeatherCard({required this.trip});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'WEATHER',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(
+                Icons.wb_sunny_outlined,
+                color: AppTheme.accent,
+                size: 36,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trip.weatherLabel,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${trip.weatherTempC.toStringAsFixed(1)}°C',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                    if (trip.weatherMultiplier > 1.0) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '×${trip.weatherMultiplier.toStringAsFixed(2)} smoothness bonus',
+                        style: const TextStyle(
+                          color: AppTheme.silver,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
