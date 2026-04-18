@@ -172,9 +172,9 @@ class SensorService {
         (axis: 2, abs: absZ, mean: meanZ),
       ]..sort((a, b) => b.abs.compareTo(a.abs));
 
-      // axes[0] = gravity axis (highest abs), axes[1] = longitudinal, axes[2] = lateral
-      final longEntry = axes[1];
-      final latEntry = axes[2];
+      // axes[0] = gravity axis (highest abs), axes[1] = lateral, axes[2] = longitudinal
+      final latEntry = axes[1];
+      final longEntry = axes[2];
 
       _longAxis = longEntry.axis;
       _longSign = longEntry.mean >= 0 ? 1 : -1;
