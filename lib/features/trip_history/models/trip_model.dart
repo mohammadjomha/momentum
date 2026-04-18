@@ -38,11 +38,6 @@ class TripModel {
   final int hardAccelCount;
   final double peakAccelG;
   final double avgAccelG;
-  final int totalCornerCount;
-  final int rightCornerCount;
-  final int leftCornerCount;
-  final double sharpestCornerG;
-  final double avgCorneringG;
 
   const TripModel({
     required this.id,
@@ -60,11 +55,6 @@ class TripModel {
     this.hardAccelCount = 0,
     this.peakAccelG = 0.0,
     this.avgAccelG = 0.0,
-    this.totalCornerCount = 0,
-    this.rightCornerCount = 0,
-    this.leftCornerCount = 0,
-    this.sharpestCornerG = 0.0,
-    this.avgCorneringG = 0.0,
   });
 
   Map<String, dynamic> toMap() => {
@@ -82,11 +72,6 @@ class TripModel {
         'hardAccelCount': hardAccelCount,
         'peakAccelG': peakAccelG,
         'avgAccelG': avgAccelG,
-        'totalCornerCount': totalCornerCount,
-        'rightCornerCount': rightCornerCount,
-        'leftCornerCount': leftCornerCount,
-        'sharpestCornerG': sharpestCornerG,
-        'avgCorneringG': avgCorneringG,
       };
 
   factory TripModel.fromDoc(DocumentSnapshot doc) {
@@ -110,11 +95,6 @@ class TripModel {
       hardAccelCount: (m['hardAccelCount'] as num?)?.toInt() ?? 0,
       peakAccelG: (m['peakAccelG'] as num?)?.toDouble() ?? 0.0,
       avgAccelG: (m['avgAccelG'] as num?)?.toDouble() ?? 0.0,
-      totalCornerCount: (m['totalCornerCount'] as num?)?.toInt() ?? 0,
-      rightCornerCount: (m['rightCornerCount'] as num?)?.toInt() ?? 0,
-      leftCornerCount: (m['leftCornerCount'] as num?)?.toInt() ?? 0,
-      sharpestCornerG: (m['sharpestCornerG'] as num?)?.toDouble() ?? 0.0,
-      avgCorneringG: (m['avgCorneringG'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

@@ -28,11 +28,6 @@ class SensorSummary {
   final int hardAccelCount;
   final double peakAccelG;
   final double avgAccelG;
-  final int totalCornerCount;
-  final int rightCornerCount;
-  final int leftCornerCount;
-  final double sharpestCornerG;
-  final double avgCorneringG;
 
   const SensorSummary({
     this.hardBrakeCount = 0,
@@ -41,37 +36,6 @@ class SensorSummary {
     this.hardAccelCount = 0,
     this.peakAccelG = 0,
     this.avgAccelG = 0,
-    this.totalCornerCount = 0,
-    this.rightCornerCount = 0,
-    this.leftCornerCount = 0,
-    this.sharpestCornerG = 0,
-    this.avgCorneringG = 0,
-  });
-}
-
-class SensorDebugState {
-  final double rawX;
-  final double rawY;
-  final double rawZ;
-  final double magnitude;
-  final String brakeState;
-  final String accelState;
-  final String cornerState;
-  final int hardBrakeCount;
-  final int hardAccelCount;
-  final int totalCornerCount;
-
-  const SensorDebugState({
-    this.rawX = 0,
-    this.rawY = 0,
-    this.rawZ = 0,
-    this.magnitude = 0,
-    this.brakeState = 'idle',
-    this.accelState = 'idle',
-    this.cornerState = 'idle',
-    this.hardBrakeCount = 0,
-    this.hardAccelCount = 0,
-    this.totalCornerCount = 0,
   });
 }
 
@@ -102,10 +66,6 @@ class SensorService {
   final List<BrakeEvent> _brakeEvents = [];
   final List<AccelEvent> _accelEvents = [];
 
-  // Debug state — updated on every sample tick
-  SensorDebugState _debugState = const SensorDebugState();
-  SensorDebugState get debugState => _debugState;
-
   /// Updates GPS speed — call from tracking_provider on every position update.
   void updateSpeed(double speedKmh) {
     _prevSpeedKmh = _lastSpeedKmh;
@@ -135,19 +95,6 @@ class SensorService {
     final mag = sqrt(event.x * event.x + event.y * event.y + event.z * event.z) / _gConstant;
 
     _processHardEvent(mag, now);
-
-    _debugState = SensorDebugState(
-      rawX: event.x,
-      rawY: event.y,
-      rawZ: event.z,
-      magnitude: mag,
-      brakeState: _inHardEvent && (_prevSpeedKmh > _lastSpeedKmh) ? 'active' : 'idle',
-      accelState: _inHardEvent && (_lastSpeedKmh > _prevSpeedKmh) ? 'active' : 'idle',
-      cornerState: 'idle',
-      hardBrakeCount: _brakeEvents.length,
-      hardAccelCount: _accelEvents.length,
-      totalCornerCount: 0,
-    );
   }
 
   void _processHardEvent(double mag, DateTime now) {
@@ -217,11 +164,6 @@ class SensorService {
       hardAccelCount: accelCount,
       peakAccelG: peakAccel,
       avgAccelG: avgAccel,
-      totalCornerCount: 0,
-      rightCornerCount: 0,
-      leftCornerCount: 0,
-      sharpestCornerG: 0,
-      avgCorneringG: 0,
     );
   }
 

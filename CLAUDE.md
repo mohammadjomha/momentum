@@ -9,13 +9,14 @@ This is a capstone project for Lebanese American University (CSC department).
 ## Current state
 The following already exists and works — do not rewrite unless explicitly asked:
 - `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance — platform-specific settings: AndroidSettings (200ms interval) and AppleSettings (bestForNavigation, automotiveNavigation)
-- `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation — EMA removed, 2 km/h zero-clamp, lastReadingInvalid getter
+- `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation — EMA removed, 2 km/h zero-clamp, lastReadingInvalid getter — no sensor dependency
+- `lib/data/services/sensor_service.dart` — magnitude-based G-force detection at 20 Hz, brake/accel state machines (0.18G threshold, 300ms duration guard), speed-gated via updateSpeed(). Cornering removed entirely. SensorService is owned by TrackingNotifier only — TripService has no sensor dependency.
 - `lib/data/models/trip_data.dart` — trip data model
-- `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill
+- `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill — contains temporary sensor debug panel (remove during final polish pass)
 - `lib/features/tracking/widgets/speedometer_widget.dart` — speedometer gauge
 - `lib/features/tracking/widgets/stat_card.dart` — stat display cards
 - `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
-- `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid
+- `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance
 - `lib/core/theme/app_theme.dart` — app theme
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, sign out
@@ -70,6 +71,17 @@ lib/
 - Invalid readings (position.speed < 0) are skipped entirely — trip stats not updated, last valid speed held
 - Display lerp: factor 0.4 at 60fps in _AnimatedSpeedometer — converges to target in ~150ms
 
+### Sensor implementation notes
+- Sensor: `userAccelerometerEventStream` via `sensors_plus`, throttled to 20 Hz
+- Approach: magnitude-only (`sqrt(x²+y²+z²) / 9.81`) — orientation-independent, no axis mapping or calibration needed
+- Brake threshold: 0.18G sustained >= 300ms, only attributed when GPS speed is decreasing
+- Accel threshold: 0.18G sustained >= 300ms, only attributed when GPS speed is increasing
+- Cornering: removed — magnitude cannot reliably distinguish corners from road bumps without axis mapping
+- `SensorService` owned exclusively by `TrackingNotifier` — do not add it back to `TripService`
+- `TripService` has no sensor dependency — `stopTrip()` is `void`, sensor summary comes from `_sensorService.stopTracking()` in the provider
+- iOS motion permission: `Permission.sensors` via `permission_handler` required before stream starts
+- Debug panel in `tracking_screen.dart` is temporary — remove before final polish pass
+
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
 - **iOS (local):** Not applicable — dev machine is Windows, no Xcode available.
@@ -95,12 +107,14 @@ users/{uid}
 trips/{tripId}
   - uid, username, date, maxSpeed, avgSpeed, distance, duration
   - route: [ {lat, lng, speed}, ... ]  ← for the map trace
+  - hardBrakeCount, peakBrakeG, avgBrakeG
+  - hardAccelCount, peakAccelG, avgAccelG
 
 listings/{listingId}
   - uid, username, title, description, price, category, imageUrl, createdAt
 
 leaderboard/{uid}
-  - username, car (map with make/model/year), topSpeed, totalDistance, bestCorneringScore
+  - username, car (map with make/model/year), topSpeed, totalDistance, smoothnessScore
 ```
 
 ### User profile — car details (COMPLETE)
@@ -159,12 +173,12 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Route visualization — Google Maps dark style, teal polyline, canvas circle markers
 - Profile screen — NHTSA make/model dropdowns, year/trim/notes, stat tiles, sign out
 - Speed tracking improvements — platform-specific GPS settings, zero-clamp, invalid reading guard, display lerp 0.4
+- G-force sensor tracking — braking G and acceleration G (peak, avg, count) tracked via sensors_plus magnitude approach, saved to Hive and Firestore per trip, displayed in trip detail screen
 
 ### Remaining (in priority order)
-1. **G-force + sensor tracking** — accelerometer/gyroscope via `sensors_plus`: braking G, cornering G, smoothness score, 0–100 km/h timer
-2. **Marketplace** — browse listings, post item form (with Firebase Storage image upload), search/filter
-3. **Leaderboard** — ranked by smoothness score (primary), top speed, total distance
-4. **Final polish pass** — animations, transitions, edge cases
+1. **Marketplace** — browse listings, post item form (with Firebase Storage image upload), search/filter
+2. **Leaderboard** — ranked by smoothness score based on braking and acceleration data (primary), top speed, total distance
+3. **Final polish pass** — animations, transitions, edge cases, remove temporary sensor debug panel
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -174,3 +188,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Do not modify location_service.dart or trip_service.dart unless the task specifically requires it
 - Map: use `google_maps_flutter` — do not use `flutter_map` for new map work
 - Keep all screens under `lib/features/<feature>/screens/` and widgets under `lib/features/<feature>/widgets/`
+- Remove the temporary sensor debug panel from `tracking_screen.dart` during the final polish pass

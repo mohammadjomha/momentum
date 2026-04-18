@@ -17,13 +17,6 @@ class TripData {
   final double peakAccelG;
   final double avgAccelG;
 
-  // Cornering
-  final int totalCornerCount;
-  final int rightCornerCount;
-  final int leftCornerCount;
-  final double sharpestCornerG;
-  final double avgCorneringG;
-
   TripData({
     this.id,
     required this.currentSpeed,
@@ -38,11 +31,6 @@ class TripData {
     this.hardAccelCount = 0,
     this.peakAccelG = 0.0,
     this.avgAccelG = 0.0,
-    this.totalCornerCount = 0,
-    this.rightCornerCount = 0,
-    this.leftCornerCount = 0,
-    this.sharpestCornerG = 0.0,
-    this.avgCorneringG = 0.0,
   });
 
   TripData copyWith({
@@ -59,11 +47,6 @@ class TripData {
     int? hardAccelCount,
     double? peakAccelG,
     double? avgAccelG,
-    int? totalCornerCount,
-    int? rightCornerCount,
-    int? leftCornerCount,
-    double? sharpestCornerG,
-    double? avgCorneringG,
   }) {
     return TripData(
       id: id ?? this.id,
@@ -79,11 +62,6 @@ class TripData {
       hardAccelCount: hardAccelCount ?? this.hardAccelCount,
       peakAccelG: peakAccelG ?? this.peakAccelG,
       avgAccelG: avgAccelG ?? this.avgAccelG,
-      totalCornerCount: totalCornerCount ?? this.totalCornerCount,
-      rightCornerCount: rightCornerCount ?? this.rightCornerCount,
-      leftCornerCount: leftCornerCount ?? this.leftCornerCount,
-      sharpestCornerG: sharpestCornerG ?? this.sharpestCornerG,
-      avgCorneringG: avgCorneringG ?? this.avgCorneringG,
     );
   }
 
@@ -112,11 +90,6 @@ class TripData {
       'hardAccelCount': hardAccelCount,
       'peakAccelG': peakAccelG,
       'avgAccelG': avgAccelG,
-      'totalCornerCount': totalCornerCount,
-      'rightCornerCount': rightCornerCount,
-      'leftCornerCount': leftCornerCount,
-      'sharpestCornerG': sharpestCornerG,
-      'avgCorneringG': avgCorneringG,
     };
   }
 
@@ -135,11 +108,6 @@ class TripData {
       hardAccelCount: (json['hardAccelCount'] as num?)?.toInt() ?? 0,
       peakAccelG: (json['peakAccelG'] as num?)?.toDouble() ?? 0.0,
       avgAccelG: (json['avgAccelG'] as num?)?.toDouble() ?? 0.0,
-      totalCornerCount: (json['totalCornerCount'] as num?)?.toInt() ?? 0,
-      rightCornerCount: (json['rightCornerCount'] as num?)?.toInt() ?? 0,
-      leftCornerCount: (json['leftCornerCount'] as num?)?.toInt() ?? 0,
-      sharpestCornerG: (json['sharpestCornerG'] as num?)?.toDouble() ?? 0.0,
-      avgCorneringG: (json['avgCorneringG'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

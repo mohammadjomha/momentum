@@ -20,14 +20,12 @@ class TrackingState {
   final TripData tripData;
   final String? error;
   final bool gpsWeak;
-  final SensorDebugState? sensorDebug;
 
   const TrackingState({
     required this.status,
     required this.tripData,
     this.error,
     this.gpsWeak = false,
-    this.sensorDebug,
   });
 
   bool get isTracking => status == TrackingStatus.tracking;
@@ -38,14 +36,12 @@ class TrackingState {
     String? error,
     bool clearError = false,
     bool? gpsWeak,
-    SensorDebugState? sensorDebug,
   }) {
     return TrackingState(
       status: status ?? this.status,
       tripData: tripData ?? this.tripData,
       error: clearError ? null : (error ?? this.error),
       gpsWeak: gpsWeak ?? this.gpsWeak,
-      sensorDebug: sensorDebug ?? this.sensorDebug,
     );
   }
 }
@@ -116,7 +112,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         (tripData) => state = state.copyWith(
           tripData: tripData,
           gpsWeak: _tripService.lastReadingInvalid,
-          sensorDebug: _sensorService.debugState,
         ),
       );
 
@@ -146,11 +141,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       hardAccelCount: summary.hardAccelCount,
       peakAccelG: summary.peakAccelG,
       avgAccelG: summary.avgAccelG,
-      totalCornerCount: summary.totalCornerCount,
-      rightCornerCount: summary.rightCornerCount,
-      leftCornerCount: summary.leftCornerCount,
-      sharpestCornerG: summary.sharpestCornerG,
-      avgCorneringG: summary.avgCorneringG,
     );
     final routeSnapshot = List<RoutePoint>.from(_routePoints);
     _routePoints.clear();
@@ -199,11 +189,6 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         hardAccelCount: tripData.hardAccelCount,
         peakAccelG: tripData.peakAccelG,
         avgAccelG: tripData.avgAccelG,
-        totalCornerCount: tripData.totalCornerCount,
-        rightCornerCount: tripData.rightCornerCount,
-        leftCornerCount: tripData.leftCornerCount,
-        sharpestCornerG: tripData.sharpestCornerG,
-        avgCorneringG: tripData.avgCorneringG,
       );
 
       await _historyService.saveTrip(trip);

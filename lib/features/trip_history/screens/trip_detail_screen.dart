@@ -51,8 +51,6 @@ class TripDetailScreen extends StatelessWidget {
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
                   SliverToBoxAdapter(child: _BrakingCard(trip: trip)),
                   const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                  SliverToBoxAdapter(child: _CorneringCard(trip: trip)),
-                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
                   SliverToBoxAdapter(child: _AccelCard(trip: trip)),
                   const SliverToBoxAdapter(child: SizedBox(height: 32)),
                 ],
@@ -538,69 +536,6 @@ class _BrakingCard extends StatelessWidget {
               _SensorStat(
                 label: 'AVG BRAKE',
                 value: trip.avgBrakeG.toStringAsFixed(2),
-                unit: 'G',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CorneringCard extends StatelessWidget {
-  final TripModel trip;
-  const _CorneringCard({required this.trip});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: _sensorCardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'CORNERING',
-            style: TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _SensorStat(
-                label: 'TOTAL CORNERS',
-                value: '${trip.totalCornerCount}',
-                unit: '',
-              ),
-              _SensorStat(
-                label: 'RIGHT CORNERS',
-                value: '${trip.rightCornerCount}',
-                unit: '',
-              ),
-              _SensorStat(
-                label: 'LEFT CORNERS',
-                value: '${trip.leftCornerCount}',
-                unit: '',
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              _SensorStat(
-                label: 'SHARPEST',
-                value: trip.sharpestCornerG.toStringAsFixed(2),
-                unit: 'G',
-              ),
-              _SensorStat(
-                label: 'AVG CORNER',
-                value: trip.avgCorneringG.toStringAsFixed(2),
                 unit: 'G',
               ),
             ],
