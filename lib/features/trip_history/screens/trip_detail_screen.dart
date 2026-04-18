@@ -524,7 +524,7 @@ class _BrakingCard extends StatelessWidget {
           Row(
             children: [
               _SensorStat(
-                label: 'HARD BRAKES',
+                label: 'TOTAL BRAKES',
                 value: '${trip.hardBrakeCount}',
                 unit: '',
               ),

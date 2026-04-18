@@ -8,17 +8,17 @@ This is a capstone project for Lebanese American University (CSC department).
 
 ## Current state
 The following already exists and works — do not rewrite unless explicitly asked:
-- `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance — platform-specific settings: AndroidSettings (200ms interval) and AppleSettings (bestForNavigation, automotiveNavigation)
+- `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance — platform-specific settings: AndroidSettings (200ms interval) and AppleSettings(bestForNavigation, automotiveNavigation)
 - `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation — EMA removed, 2 km/h zero-clamp, lastReadingInvalid getter — no sensor dependency
 - `lib/data/services/sensor_service.dart` — magnitude-based G-force detection at 20 Hz, brake/accel state machines (0.18G threshold, 300ms duration guard), speed-gated via updateSpeed(). Cornering removed entirely. SensorService is owned by TrackingNotifier only — TripService has no sensor dependency.
-- `lib/data/models/trip_data.dart` — trip data model
-- `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill — contains temporary sensor debug panel (remove during final polish pass)
+- `lib/data/models/trip_data.dart` — trip data model, cornering fields removed
+- `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill — debug panel removed
 - `lib/features/tracking/widgets/speedometer_widget.dart` — speedometer gauge
 - `lib/features/tracking/widgets/stat_card.dart` — stat display cards
 - `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
 - `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance
 - `lib/core/theme/app_theme.dart` — app theme
-- `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization
+- `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (underlying field remains `hardBrakeCount`)
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, sign out
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
 - `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state
@@ -35,11 +35,11 @@ lib/
 │   ├── models/
 │   └── services/
 ├── features/
-│   ├── tracking/        # Live drive screen (extend prototype)
+│   ├── tracking/        # Live drive screen
 │   ├── trip_history/    # Past trips, route map, stats
 │   ├── marketplace/     # Parts listings, post item, search
-│   ├── leaderboard/     # Rankings, social feed
-│   ├── profile/         # User profile, structured car details
+│   ├── leaderboard/     # Rankings with time filters
+│   ├── profile/         # User profile, car details, maintenance log
 │   └── auth/            # Login, register screens
 └── shared/
     └── widgets/         # Reusable components
@@ -49,11 +49,12 @@ lib/
 - Flutter 3.10.7+
 - State management: Riverpod
 - Local storage: Hive
-- Backend: Firebase (Firestore + Auth)
+- Backend: Firebase (Firestore + Auth + Storage)
 - Map: google_maps_flutter (trip detail screen) — dark style via JSON, teal polyline, canvas-drawn circle markers
 - GPS: geolocator (already in use)
 - Motion sensors: sensors_plus
 - Routing: go_router
+- Weather: Open-Meteo API (free, no key required) — fetched at trip end using midpoint GPS coordinate
 
 ### Map implementation notes
 - `google_maps_flutter` is the active map package — `flutter_map` and `latlong2` remain in pubspec.yaml but are not used for rendering
@@ -76,11 +77,38 @@ lib/
 - Approach: magnitude-only (`sqrt(x²+y²+z²) / 9.81`) — orientation-independent, no axis mapping or calibration needed
 - Brake threshold: 0.18G sustained >= 300ms, only attributed when GPS speed is decreasing
 - Accel threshold: 0.18G sustained >= 300ms, only attributed when GPS speed is increasing
-- Cornering: removed — magnitude cannot reliably distinguish corners from road bumps without axis mapping
+- Cornering: removed entirely — magnitude cannot reliably distinguish corners from road bumps without axis mapping
 - `SensorService` owned exclusively by `TrackingNotifier` — do not add it back to `TripService`
 - `TripService` has no sensor dependency — `stopTrip()` is `void`, sensor summary comes from `_sensorService.stopTracking()` in the provider
 - iOS motion permission: `Permission.sensors` via `permission_handler` required before stream starts
-- Debug panel in `tracking_screen.dart` is temporary — remove before final polish pass
+
+### Weather implementation notes
+- Provider: Open-Meteo API — `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=temperature_2m,weather_code`
+- No API key required
+- Fetched once at trip end using the midpoint coordinate of the route array
+- WMO weather code mapped to a human-readable label (e.g. "Clear", "Partly Cloudy", "Heavy Rain") and a smoothness multiplier
+- Weather multiplier scale (applied to smoothness score):
+  - Clear / Mostly Clear (codes 0–2): 1.00
+  - Partly Cloudy / Overcast (codes 3, 45, 48): 1.05
+  - Light Rain / Drizzle (codes 51–57, 61): 1.10
+  - Moderate Rain (codes 63, 80–81): 1.15
+  - Heavy Rain / Thunderstorm (codes 65, 82, 95–99): 1.25
+  - Snow / Sleet (codes 71–77): 1.20
+- Smoothness score formula: `finalScore = min(100, baseScore * weatherMultiplier)`
+- A perfect drive in clear weather still scores 100 — multiplier only makes it easier to reach 100 in bad conditions
+- Stored fields on trip document: `weatherCode` (int), `weatherLabel` (String), `weatherTempC` (double), `weatherMultiplier` (double)
+- Displayed in trip detail as a weather card alongside braking/accel cards
+
+### Smoothness score notes
+- Computed once at trip end, stored as `smoothnessScore` (double, 0–100) on the trip document
+- Base score formula (before weather multiplier):
+  - Start at 100
+  - Deduct per hard brake event: `-5` (capped at -40 total from braking)
+  - Deduct per hard accel event: `-3` (capped at -25 total from acceleration)
+  - Deduct based on peak brake G above 0.4G: `-(peakBrakeG - 0.4) * 20` (only if peakBrakeG > 0.4)
+  - Floor at 0 before applying weather multiplier
+- `finalScore = min(100.0, max(0.0, baseScore) * weatherMultiplier)`
+- Stored on trip document and used directly by leaderboard queries — not recomputed at read time
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
@@ -104,18 +132,26 @@ users/{uid}
   - username, email, totalDistance, totalTrips, createdAt
   - car: { make, model, year, trim (optional), notes (optional) }
 
+users/{uid}/maintenance/{entryId}
+  - type (String — e.g. "Oil Change", "General Checkup", "Yearly Inspection")
+  - lastDoneDate (Timestamp)
+  - nextDueDate (Timestamp, optional)
+  - notes (String, optional)
+  - createdAt (Timestamp)
+
 trips/{tripId}
   - uid, username, date, maxSpeed, avgSpeed, distance, duration
   - route: [ {lat, lng, speed}, ... ]  ← for the map trace
   - hardBrakeCount, peakBrakeG, avgBrakeG
   - hardAccelCount, peakAccelG, avgAccelG
+  - weatherCode (int), weatherLabel (String), weatherTempC (double), weatherMultiplier (double)
+  - smoothnessScore (double, 0–100)
 
 listings/{listingId}
   - uid, username, title, description, price, category, imageUrl, createdAt
-
-leaderboard/{uid}
-  - username, car (map with make/model/year), topSpeed, totalDistance, smoothnessScore
 ```
+
+Note: There is no separate `leaderboard` collection. The leaderboard queries the `trips` collection directly, filtered by `date` range and ordered by the relevant metric. This requires composite Firestore indexes on (uid, date, smoothnessScore), (uid, date, maxSpeed), and (uid, date, distance).
 
 ### User profile — car details (COMPLETE)
 - Profile screen: `lib/features/profile/screens/profile_screen.dart`
@@ -174,11 +210,16 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Profile screen — NHTSA make/model dropdowns, year/trim/notes, stat tiles, sign out
 - Speed tracking improvements — platform-specific GPS settings, zero-clamp, invalid reading guard, display lerp 0.4
 - G-force sensor tracking — braking G and acceleration G (peak, avg, count) tracked via sensors_plus magnitude approach, saved to Hive and Firestore per trip, displayed in trip detail screen
+- Cleanup — cornering removed from all models, services, and UI; debug panel removed from tracking screen
 
-### Remaining (in priority order)
-1. **Marketplace** — browse listings, post item form (with Firebase Storage image upload), search/filter
-2. **Leaderboard** — ranked by smoothness score based on braking and acceleration data (primary), top speed, total distance
-3. **Final polish pass** — animations, transitions, edge cases, remove temporary sensor debug panel
+### Remaining (in build order)
+1. **Weather on trips** — fetch at trip end via Open-Meteo using midpoint GPS coordinate, store weatherCode/weatherLabel/weatherTempC/weatherMultiplier on trip document, display as weather card in trip detail screen
+2. **Smoothness score** — compute at trip end using brake/accel data + weather multiplier, store as smoothnessScore on trip document, display in trip detail screen
+3. **Maintenance log** — section on profile screen, Firestore subcollection users/{uid}/maintenance, add/edit/delete entries, overdue items highlighted in amber/red
+4. **Leaderboard** — queries trips collection directly, four time filters (Today / This Week / This Month / All Time) as a toggle, ranked by smoothness score (primary), top speed, total distance
+5. **Marketplace** — browse listings, post item form with Firebase Storage image upload, search/filter by category
+6. **AI driving coach** — automatic post-trip Claude API analysis triggered at trip end, result stored per trip in Firestore, displayed as a card in trip detail screen
+7. **Polish pass** — animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -188,4 +229,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Do not modify location_service.dart or trip_service.dart unless the task specifically requires it
 - Map: use `google_maps_flutter` — do not use `flutter_map` for new map work
 - Keep all screens under `lib/features/<feature>/screens/` and widgets under `lib/features/<feature>/widgets/`
-- Remove the temporary sensor debug panel from `tracking_screen.dart` during the final polish pass
+- Weather fetch and smoothness score computation both happen inside `tracking_provider.dart` at trip end — do not add weather or scoring logic to `trip_service.dart`
