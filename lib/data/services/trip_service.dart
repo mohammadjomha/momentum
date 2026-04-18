@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import '../models/trip_data.dart';
-import 'sensor_service.dart';
 
 class TripService {
   TripData _currentTrip = TripData.initial();
@@ -11,8 +10,6 @@ class TripService {
   bool _lastReadingInvalid = false;
   bool get lastReadingInvalid => _lastReadingInvalid;
 
-  final SensorService _sensorService = SensorService();
-
   final StreamController<TripData> _tripDataController =
       StreamController<TripData>.broadcast();
 
@@ -20,8 +17,6 @@ class TripService {
   TripData get currentTrip => _currentTrip;
 
   void startTrip() {
-    _sensorService.reset();
-    // Sensor tracking is started externally (with calibration) by the provider.
     _currentTrip = TripData.initial();
     _lastPosition = null;
     _speedSamples.clear();
@@ -89,10 +84,9 @@ class TripService {
     _tripDataController.add(_currentTrip);
   }
 
-  Future<SensorSummary> stopTrip() async {
+  void stopTrip() {
     _durationTimer?.cancel();
     _durationTimer = null;
-    return _sensorService.stopTracking();
   }
 
   void dispose() {

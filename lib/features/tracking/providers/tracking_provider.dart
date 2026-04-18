@@ -136,7 +136,8 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     _tripDataSub = null;
 
     await _locationService.stopTracking();
-    final SensorSummary summary = await _tripService.stopTrip();
+    final SensorSummary summary = await _sensorService.stopTracking();
+    _tripService.stopTrip();
 
     final tripData = state.tripData.copyWith(
       hardBrakeCount: summary.hardBrakeCount,
@@ -192,6 +193,17 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
         distance: tripData.distance,
         duration: tripData.duration,
         route: route,
+        hardBrakeCount: tripData.hardBrakeCount,
+        peakBrakeG: tripData.peakBrakeG,
+        avgBrakeG: tripData.avgBrakeG,
+        hardAccelCount: tripData.hardAccelCount,
+        peakAccelG: tripData.peakAccelG,
+        avgAccelG: tripData.avgAccelG,
+        totalCornerCount: tripData.totalCornerCount,
+        rightCornerCount: tripData.rightCornerCount,
+        leftCornerCount: tripData.leftCornerCount,
+        sharpestCornerG: tripData.sharpestCornerG,
+        avgCorneringG: tripData.avgCorneringG,
       );
 
       await _historyService.saveTrip(trip);

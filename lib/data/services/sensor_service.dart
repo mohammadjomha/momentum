@@ -11,11 +11,6 @@ class SensorEvent {
   const SensorEvent(this.x, this.y, this.z);
 }
 
-class CornerEvent {
-  final double peakG;
-  const CornerEvent(this.peakG);
-}
-
 class BrakeEvent {
   final double peakG;
   const BrakeEvent(this.peakG);
@@ -58,7 +53,7 @@ class SensorDebugState {
   final double rawX;
   final double rawY;
   final double rawZ;
-  final double magnitude; // total G magnitude
+  final double magnitude;
   final String brakeState;
   final String accelState;
   final String cornerState;
@@ -85,12 +80,9 @@ class SensorService {
 
   // Thresholds
   static const double _hardEventThresholdG = 0.18;
-  static const double _cornerThresholdG = 0.25;
-  static const double _cornerMinSpeedKmh = 15.0;
 
   // Minimum sustained durations
-  static const Duration _hardEventMinDuration = Duration(milliseconds: 150);
-  static const Duration _cornerMinDuration = Duration(milliseconds: 300);
+  static const Duration _hardEventMinDuration = Duration(milliseconds: 300);
 
   StreamSubscription<UserAccelerometerEvent>? _sub;
 
@@ -106,13 +98,7 @@ class SensorService {
   DateTime? _hardEventStart;
   double _hardEventPeak = 0.0;
 
-  // Corner state machine
-  bool _inCorner = false;
-  DateTime? _cornerStart;
-  double _cornerPeak = 0.0;
-
   // Accumulated events
-  final List<CornerEvent> _cornerEvents = [];
   final List<BrakeEvent> _brakeEvents = [];
   final List<AccelEvent> _accelEvents = [];
 
@@ -149,7 +135,6 @@ class SensorService {
     final mag = sqrt(event.x * event.x + event.y * event.y + event.z * event.z) / _gConstant;
 
     _processHardEvent(mag, now);
-    _processCorner(mag, now);
 
     _debugState = SensorDebugState(
       rawX: event.x,
@@ -158,10 +143,10 @@ class SensorService {
       magnitude: mag,
       brakeState: _inHardEvent && (_prevSpeedKmh > _lastSpeedKmh) ? 'active' : 'idle',
       accelState: _inHardEvent && (_lastSpeedKmh > _prevSpeedKmh) ? 'active' : 'idle',
-      cornerState: _inCorner ? 'active' : 'idle',
+      cornerState: 'idle',
       hardBrakeCount: _brakeEvents.length,
       hardAccelCount: _accelEvents.length,
-      totalCornerCount: _cornerEvents.length,
+      totalCornerCount: 0,
     );
   }
 
@@ -189,53 +174,24 @@ class SensorService {
   void _attributeHardEvent(double peakG) {
     final speedDelta = _lastSpeedKmh - _prevSpeedKmh;
     if (speedDelta < 0) {
-      // Decelerating → brake
       _brakeEvents.add(BrakeEvent(peakG));
     } else if (speedDelta > 0) {
-      // Accelerating → accel
       _accelEvents.add(AccelEvent(peakG));
     }
     // If speed unchanged, discard
-  }
-
-  void _processCorner(double mag, DateTime now) {
-    if (mag > _cornerThresholdG) {
-      if (!_inCorner) {
-        _inCorner = true;
-        _cornerStart = now;
-        _cornerPeak = mag;
-      } else {
-        if (mag > _cornerPeak) _cornerPeak = mag;
-      }
-    } else {
-      if (_inCorner) {
-        final duration = now.difference(_cornerStart!);
-        if (duration >= _cornerMinDuration && _lastSpeedKmh >= _cornerMinSpeedKmh) {
-          _cornerEvents.add(CornerEvent(_cornerPeak));
-        }
-        _inCorner = false;
-        _cornerPeak = 0.0;
-      }
-    }
   }
 
   Future<SensorSummary> stopTracking() async {
     await _sub?.cancel();
     _sub = null;
 
-    // Flush any in-progress events still active when tracking stopped
+    // Flush any in-progress hard event still active when tracking stopped
     final now = DateTime.now();
     if (_inHardEvent && _hardEventStart != null) {
       if (now.difference(_hardEventStart!) >= _hardEventMinDuration) {
         _attributeHardEvent(_hardEventPeak);
       }
       _inHardEvent = false;
-    }
-    if (_inCorner && _cornerStart != null) {
-      if (now.difference(_cornerStart!) >= _cornerMinDuration) {
-        _cornerEvents.add(CornerEvent(_cornerPeak));
-      }
-      _inCorner = false;
     }
 
     return _buildSummary();
@@ -254,15 +210,6 @@ class SensorService {
     final avgAccel =
         accelCount > 0 ? _accelEvents.map((e) => e.peakG).reduce((a, b) => a + b) / accelCount : 0.0;
 
-    final cornerCount = _cornerEvents.length;
-    // Direction is not detectable from magnitude — split evenly
-    final rightCount = cornerCount ~/ 2;
-    final leftCount = cornerCount - rightCount;
-    final sharpestCorner =
-        cornerCount > 0 ? _cornerEvents.map((e) => e.peakG).reduce((a, b) => a > b ? a : b) : 0.0;
-    final avgCorner =
-        cornerCount > 0 ? _cornerEvents.map((e) => e.peakG).reduce((a, b) => a + b) / cornerCount : 0.0;
-
     return SensorSummary(
       hardBrakeCount: brakeCount,
       peakBrakeG: peakBrake,
@@ -270,11 +217,11 @@ class SensorService {
       hardAccelCount: accelCount,
       peakAccelG: peakAccel,
       avgAccelG: avgAccel,
-      totalCornerCount: cornerCount,
-      rightCornerCount: rightCount,
-      leftCornerCount: leftCount,
-      sharpestCornerG: sharpestCorner,
-      avgCorneringG: avgCorner,
+      totalCornerCount: 0,
+      rightCornerCount: 0,
+      leftCornerCount: 0,
+      sharpestCornerG: 0,
+      avgCorneringG: 0,
     );
   }
 
@@ -287,10 +234,6 @@ class SensorService {
     _inHardEvent = false;
     _hardEventStart = null;
     _hardEventPeak = 0.0;
-    _inCorner = false;
-    _cornerStart = null;
-    _cornerPeak = 0.0;
-    _cornerEvents.clear();
     _brakeEvents.clear();
     _accelEvents.clear();
   }
