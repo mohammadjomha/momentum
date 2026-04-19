@@ -7,6 +7,8 @@ import 'package:intl/intl.dart';
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
 
+  static bool? iosPermissionGranted;
+
   static Future<void> initialize() async {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings(
@@ -19,7 +21,7 @@ class NotificationService {
     );
 
     if (Platform.isIOS) {
-      await _plugin
+      iosPermissionGranted = await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: false, sound: true);
@@ -37,6 +39,27 @@ class NotificationService {
             ),
           );
     }
+  }
+
+  static Future<void> debugTestNotification() async {
+    await _plugin.show(
+      999,
+      'Momentum Test',
+      'Notifications are working',
+      const NotificationDetails(
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: false,
+          presentSound: true,
+        ),
+        android: AndroidNotificationDetails(
+          'momentum_maintenance',
+          'Maintenance Reminders',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+    );
   }
 
   static Future<void> checkAndNotifyOverdueMaintenance(String uid) async {
