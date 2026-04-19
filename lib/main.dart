@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/theme/app_theme.dart';
+import 'data/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/home/screens/home_screen.dart';
@@ -15,7 +16,12 @@ import 'firebase_options.dart';
 // allowing go_router to re-evaluate redirects reactively.
 class _AuthStateListenable extends ChangeNotifier {
   _AuthStateListenable() {
-    FirebaseAuth.instance.authStateChanges().listen((_) => notifyListeners());
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        NotificationService.checkAndNotifyOverdueMaintenance(user.uid);
+      }
+      notifyListeners();
+    });
   }
 }
 
@@ -54,6 +60,8 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+
+  await NotificationService.initialize();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(

@@ -46,6 +46,7 @@ post_install do |installer|
         '$(inherited)',
         'PERMISSION_LOCATION=1',
         'PERMISSION_SENSORS=1',
+        'PERMISSION_NOTIFICATIONS=1',
       ]
       # Ensure all pods honour the same minimum deployment target.
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'

@@ -57,5 +57,7 @@
 	<array>
 		<string>location</string>
 	</array>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Momentum uses notifications to remind you when vehicle maintenance is overdue.</string>
 </dict>
 </plist>
