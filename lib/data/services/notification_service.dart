@@ -3,79 +3,82 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
-import 'package:permission_handler/permission_handler.dart';
-
-import '../../features/profile/models/maintenance_entry.dart';
 
 class NotificationService {
-  NotificationService._();
-
   static final _plugin = FlutterLocalNotificationsPlugin();
 
-  static const _channelId = 'momentum_maintenance';
-  static const _channelName = 'Maintenance Reminders';
-
   static Future<void> initialize() async {
-    if (Platform.isAndroid) {
-      await Permission.notification.request();
-    } else if (Platform.isIOS) {
-      final status = await Permission.notification.status;
-      if (status.isDenied) await Permission.notification.request();
-    }
-
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: false,
       requestSoundPermission: true,
     );
-    await _plugin.initialize(const InitializationSettings(android: android, iOS: ios));
+    await _plugin.initialize(
+      const InitializationSettings(android: android, iOS: ios),
+    );
+
+    if (Platform.isIOS) {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: false, sound: true);
+    }
+
+    if (Platform.isAndroid) {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'momentum_maintenance',
+              'Maintenance Reminders',
+              importance: Importance.high,
+            ),
+          );
+    }
   }
 
   static Future<void> checkAndNotifyOverdueMaintenance(String uid) async {
-    final debugDetails = NotificationDetails(
-      android: AndroidNotificationDetails(_channelId, _channelName,
-          importance: Importance.high, priority: Priority.high),
-      iOS: const DarwinNotificationDetails(),
-    );
-    await _plugin.show(9000, 'DEBUG: check started',
-        'uid: ${uid.substring(0, uid.length.clamp(0, 6))}', debugDetails);
-
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
+    final today = DateTime.now();
     final snapshot = await FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .collection('maintenance')
         .get();
 
-    final overdue = snapshot.docs
-        .map((d) => MaintenanceEntry.fromDoc(d))
-        .where((e) =>
-            e.nextDueDate != null &&
-            e.nextDueDate!.isBefore(today))
-        .toList();
+    final overdue = snapshot.docs.where((doc) {
+      final data = doc.data();
+      final ts = data['nextDueDate'];
+      if (ts == null) return false;
+      final due = (ts as Timestamp).toDate();
+      return due.isBefore(today);
+    }).toList();
 
-    await _plugin.show(9001, 'DEBUG: query done',
-        'found ${overdue.length} overdue entries', debugDetails);
+    for (int i = 0; i < overdue.length; i++) {
+      final data = overdue[i].data();
+      final type = data['type'] as String? ?? 'Maintenance';
+      final lastTs = data['lastDoneDate'] as Timestamp?;
+      final lastDone = lastTs != null
+          ? DateFormat('MMM d, yyyy').format(lastTs.toDate())
+          : 'unknown';
 
-    final formatter = DateFormat('MMM d, yyyy');
-
-    for (var i = 0; i < overdue.length; i++) {
-      final entry = overdue[i];
       await _plugin.show(
         i,
-        'Your ${entry.type} is overdue',
-        'Last done: ${formatter.format(entry.lastDoneDate)}',
-        NotificationDetails(
+        'Your $type is overdue',
+        'Last done: $lastDone',
+        const NotificationDetails(
           android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
+            'momentum_maintenance',
+            'Maintenance Reminders',
             importance: Importance.high,
             priority: Priority.high,
           ),
-          iOS: const DarwinNotificationDetails(),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: false,
+            presentSound: true,
+          ),
         ),
       );
     }
