@@ -232,13 +232,13 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 ### Known issues
 - **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
 - **Weather icon placeholder** — weather card shows `Icons.wb_sunny_outlined` for all weather types; custom painter illustrations planned for polish pass.
+- **Push notifications (iOS)** — Android works correctly: system notification fires on app launch for each overdue maintenance entry. iOS notifications are implemented (flutter_local_notifications, permission granted) but delivery is unreliable — notifications only appear when the app is backgrounded shortly after launch due to iOS foreground suppression. No code fix found without Xcode/APNs debugging access. Feature is functional on Android for demo purposes.
 
 ### Remaining (in build order)
 1. **Share Trip card** — shareable image via `RepaintBoundary` + `google_maps_flutter`'s `takeSnapshot()`. Layout: route map snapshot top-left (~65% width/height), stats stacked vertically to its right (max speed, avg speed, distance, duration), weather + smoothness score side by side below the map, Momentum branding at bottom. Share via `share_plus`. Button in trip detail labeled "Share Trip"
-2. **Push notifications for overdue maintenance** — on app launch, check all maintenance entries, fire a local notification for any where nextDueDate < today. Use `flutter_local_notifications`, on-open-only (no background service). Requires POST_NOTIFICATIONS permission on Android 13+
-3. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
-4. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
-5. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+2. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
+3. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
+4. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -250,4 +250,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Keep all screens under `lib/features/<feature>/screens/` and widgets under `lib/features/<feature>/widgets/`
 - Weather fetch and smoothness score computation both happen inside `tracking_provider.dart` at trip end — do not add weather or scoring logic to `trip_service.dart`
 - SensorService lives in TrackingNotifier only — do not add back to TripService
-- `flutter analyze` must be clean after every prompt
+- `flutter analyze` must be clean after every prompt.
