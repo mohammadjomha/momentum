@@ -33,7 +33,6 @@ void main() async {
   );
 
   await NotificationService.initialize();
-  await NotificationService.debugTestNotification();
 
   final authListenable = _AuthStateListenable();
 

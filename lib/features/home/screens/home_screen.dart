@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../../data/services/notification_service.dart';
 import '../../leaderboard/screens/leaderboard_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../tracking/screens/tracking_screen.dart';
@@ -46,36 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Stack(
-        children: [
-          _buildPage(_currentIndex),
-          Positioned(
-            top: 60,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    color: Colors.black87,
-                    child: Text(
-                      'iOS perm: ${NotificationService.iosPermissionGranted?.toString() ?? 'null'}',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  ElevatedButton(
-                    onPressed: NotificationService.debugTestNotification,
-                    child: const Text('Test Notif'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+      body: _buildPage(_currentIndex),
       bottomNavigationBar: _buildNavBar(),
     );
   }
