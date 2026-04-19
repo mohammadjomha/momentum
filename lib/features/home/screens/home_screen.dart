@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../leaderboard/screens/leaderboard_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../tracking/screens/tracking_screen.dart';
 import '../../trip_history/screens/trip_history_screen.dart';
@@ -34,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 2:
         return const _PlaceholderPage(title: 'Marketplace');
       case 3:
-        return const _PlaceholderPage(title: 'Leaderboard');
+        return const LeaderboardScreen();
       default:
         return const _PlaceholderPage(title: '');
     }
