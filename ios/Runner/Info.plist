@@ -59,5 +59,7 @@
 	</array>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Momentum uses notifications to remind you when vehicle maintenance is overdue.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Momentum saves your trip card to your photo library so you can share it.</string>
 </dict>
 </plist>
