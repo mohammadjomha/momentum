@@ -102,10 +102,11 @@ lib/
 ### Smoothness score notes
 - Computed once at trip end, stored as `smoothnessScore` (double, 0–100) on the trip document
 - Formula (in `_computeSmoothnessScore` inside `tracking_provider.dart`):
+  - peakBrakeG and peakAccelG are clamped to 1.0G max before scoring to filter out sensor noise
   - Start at 100
-  - If peakBrakeG > 0.5G: deduct `(peakBrakeG - 0.5) * 30`
+  - If peakBrakeG > 0.5G (clamped): deduct `(peakBrakeG - 0.5) * 30`
   - If avgBrakeG > 0.25G: deduct `(avgBrakeG - 0.25) * 25`
-  - If peakAccelG > 0.6G: deduct `(peakAccelG - 0.6) * 20`
+  - If peakAccelG > 0.6G (clamped): deduct `(peakAccelG - 0.6) * 20`
   - Clamp to 0–100, then multiply by weatherMultiplier and clamp again
 - `finalScore = (score.clamp(0, 100) * weatherMultiplier).clamp(0, 100)`
 - Stored on trip document and used directly by leaderboard queries — not recomputed at read time

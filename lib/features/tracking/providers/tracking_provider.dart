@@ -230,10 +230,12 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
     required double peakAccelG,
     required double weatherMultiplier,
   }) {
+    final clampedPeakBrake = peakBrakeG.clamp(0.0, 1.0);
+    final clampedPeakAccel = peakAccelG.clamp(0.0, 1.0);
     double score = 100.0;
-    if (peakBrakeG > 0.5) score -= (peakBrakeG - 0.5) * 30;
+    if (clampedPeakBrake > 0.5) score -= (clampedPeakBrake - 0.5) * 30;
     if (avgBrakeG > 0.25) score -= (avgBrakeG - 0.25) * 25;
-    if (peakAccelG > 0.6) score -= (peakAccelG - 0.6) * 20;
+    if (clampedPeakAccel > 0.6) score -= (clampedPeakAccel - 0.6) * 20;
     score = score.clamp(0.0, 100.0);
     return (score * weatherMultiplier).clamp(0.0, 100.0);
   }
