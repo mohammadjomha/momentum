@@ -25,35 +25,6 @@ class _AuthStateListenable extends ChangeNotifier {
   }
 }
 
-final _authListenable = _AuthStateListenable();
-
-final _router = GoRouter(
-  initialLocation: '/login',
-  refreshListenable: _authListenable,
-  redirect: (context, state) {
-    final signedIn = FirebaseAuth.instance.currentUser != null;
-    final onAuth = state.matchedLocation == '/login' ||
-        state.matchedLocation == '/register';
-    if (signedIn && onAuth) return '/home';
-    if (!signedIn && !onAuth) return '/login';
-    return null;
-  },
-  routes: [
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginScreen(),
-    ),
-    GoRoute(
-      path: '/register',
-      builder: (context, state) => const RegisterScreen(),
-    ),
-    GoRoute(
-      path: '/home',
-      builder: (context, state) => const HomeScreen(),
-    ),
-  ],
-);
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -62,6 +33,35 @@ void main() async {
   );
 
   await NotificationService.initialize();
+
+  final authListenable = _AuthStateListenable();
+
+  final router = GoRouter(
+    initialLocation: '/login',
+    refreshListenable: authListenable,
+    redirect: (context, state) {
+      final signedIn = FirebaseAuth.instance.currentUser != null;
+      final onAuth = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register';
+      if (signedIn && onAuth) return '/home';
+      if (!signedIn && !onAuth) return '/login';
+      return null;
+    },
+    routes: [
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/home',
+        builder: (context, state) => const HomeScreen(),
+      ),
+    ],
+  );
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -72,11 +72,13 @@ void main() async {
     ),
   );
 
-  runApp(const ProviderScope(child: MomentumApp()));
+  runApp(ProviderScope(child: MomentumApp(router: router)));
 }
 
 class MomentumApp extends StatelessWidget {
-  const MomentumApp({super.key});
+  const MomentumApp({super.key, required this.router});
+
+  final GoRouter router;
 
   @override
   Widget build(BuildContext context) {
@@ -84,7 +86,7 @@ class MomentumApp extends StatelessWidget {
       title: 'Momentum',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      routerConfig: _router,
+      routerConfig: router,
     );
   }
 }

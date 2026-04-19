@@ -17,22 +17,19 @@ class NotificationService {
 
   static Future<void> initialize() async {
     if (Platform.isAndroid) {
+      await Permission.notification.request();
+    } else if (Platform.isIOS) {
       final status = await Permission.notification.status;
-      if (status.isDenied) {
-        await Permission.notification.request();
-      }
+      if (status.isDenied) await Permission.notification.request();
     }
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosInit = DarwinInitializationSettings(
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const ios = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: false,
       requestSoundPermission: true,
     );
-
-    await _plugin.initialize(
-      const InitializationSettings(android: androidInit, iOS: iosInit),
-    );
+    await _plugin.initialize(const InitializationSettings(android: android, iOS: ios));
   }
 
   static Future<void> checkAndNotifyOverdueMaintenance(String uid) async {
