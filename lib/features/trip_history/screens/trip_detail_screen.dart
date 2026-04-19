@@ -62,6 +62,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       final file = await File(filePath).writeAsBytes(bytes);
 
       await Share.shareXFiles([XFile(file.path)]);
+      if (mounted) setState(() => _isSharing = false);
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
