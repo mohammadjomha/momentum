@@ -1,14 +1,27 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/trip_model.dart';
+import '../widgets/share_trip_card.dart';
 
-class TripDetailScreen extends StatelessWidget {
+class TripDetailScreen extends StatefulWidget {
   final TripModel trip;
   const TripDetailScreen({super.key, required this.trip});
+
+  @override
+  State<TripDetailScreen> createState() => _TripDetailScreenState();
+}
+
+class _TripDetailScreenState extends State<TripDetailScreen> {
+  final GlobalKey _shareBoundaryKey = GlobalKey();
+  bool _isSharing = false;
 
   String _formatDuration(Duration d) {
     final h = d.inHours;
@@ -19,9 +32,44 @@ class TripDetailScreen extends StatelessWidget {
     return '${s}s';
   }
 
+  Future<void> _shareTrip() async {
+    if (_isSharing) return;
+    setState(() => _isSharing = true);
+
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final boundary = _shareBoundaryKey.currentContext
+          ?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        if (mounted) setState(() => _isSharing = false);
+        return;
+      }
+
+      final image = await boundary.toImage(pixelRatio: 1.0);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        if (mounted) setState(() => _isSharing = false);
+        return;
+      }
+      final bytes = byteData.buffer.asUint8List();
+
+      final tempDir = await getTemporaryDirectory();
+      final filePath =
+          '${tempDir.path}/momentum_trip_${widget.trip.id}.png';
+      final file = await File(filePath).writeAsBytes(bytes);
+
+      await Share.shareXFiles([XFile(file.path)]);
+    } finally {
+      if (mounted) setState(() => _isSharing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final points = trip.route
+    final points = widget.trip.route
         .map((p) => LatLng(p.lat, p.lng))
         .toList();
 
@@ -29,43 +77,126 @@ class TripDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _TopBar(trip: trip),
-            Expanded(
-              child: CustomScrollView(
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 500,
-                      child: hasRoute
-                          ? _RouteMap(points: points)
-                          : const _NoRouteCard(),
-                    ),
+      body: Stack(
+        children: [
+          Positioned(
+            left: -10000,
+            top: -10000,
+            child: RepaintBoundary(
+              key: _shareBoundaryKey,
+              child: MediaQuery(
+                data: const MediaQueryData(),
+                child: Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Material(
+                    color: AppTheme.background,
+                    child: ShareTripCard(trip: widget.trip),
                   ),
-                  SliverToBoxAdapter(
-                    child: _StatsPanel(
-                        trip: trip, formatDuration: _formatDuration),
-                  ),
-                  if (trip.smoothnessScore > 0.0) ...[
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    SliverToBoxAdapter(child: _SmoothnessCard(trip: trip)),
-                  ],
-                  if (trip.weatherLabel.isNotEmpty) ...[
-                    const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                    SliverToBoxAdapter(child: _WeatherCard(trip: trip)),
-                  ],
-                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                  SliverToBoxAdapter(child: _BrakingCard(trip: trip)),
-                  const SliverToBoxAdapter(child: SizedBox(height: 12)),
-                  SliverToBoxAdapter(child: _AccelCard(trip: trip)),
-                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
-                ],
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+          SafeArea(
+            child: Column(
+              children: [
+                _TopBar(trip: widget.trip),
+                Expanded(
+                  child: CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 500,
+                          child: hasRoute
+                              ? _RouteMap(points: points)
+                              : const _NoRouteCard(),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _StatsPanel(
+                            trip: widget.trip,
+                            formatDuration: _formatDuration),
+                      ),
+                      if (widget.trip.smoothnessScore > 0.0) ...[
+                        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                        SliverToBoxAdapter(
+                            child: _SmoothnessCard(trip: widget.trip)),
+                      ],
+                      if (widget.trip.weatherLabel.isNotEmpty) ...[
+                        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                        SliverToBoxAdapter(
+                            child: _WeatherCard(trip: widget.trip)),
+                      ],
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      SliverToBoxAdapter(
+                          child: _BrakingCard(trip: widget.trip)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      SliverToBoxAdapter(
+                          child: _AccelCard(trip: widget.trip)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                      SliverToBoxAdapter(
+                        child: _ShareButton(
+                          isSharing: _isSharing,
+                          onPressed: _shareTrip,
+                        ),
+                      ),
+                      const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ShareButton extends StatelessWidget {
+  final bool isSharing;
+  final VoidCallback onPressed;
+  const _ShareButton({required this.isSharing, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: isSharing
+            ? const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    color: AppTheme.accent,
+                    strokeWidth: 2.5,
+                  ),
+                ),
+              )
+            : OutlinedButton.icon(
+                onPressed: onPressed,
+                icon: const Icon(Icons.share, color: AppTheme.accent),
+                label: const Text(
+                  'Share Trip',
+                  style: TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: AppTheme.accent.withValues(alpha: 0.6),
+                    width: 1,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
       ),
     );
   }
