@@ -33,6 +33,14 @@ class NotificationService {
   }
 
   static Future<void> checkAndNotifyOverdueMaintenance(String uid) async {
+    final debugDetails = NotificationDetails(
+      android: AndroidNotificationDetails(_channelId, _channelName,
+          importance: Importance.high, priority: Priority.high),
+      iOS: const DarwinNotificationDetails(),
+    );
+    await _plugin.show(9000, 'DEBUG: check started',
+        'uid: ${uid.substring(0, uid.length.clamp(0, 6))}', debugDetails);
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -48,6 +56,9 @@ class NotificationService {
             e.nextDueDate != null &&
             e.nextDueDate!.isBefore(today))
         .toList();
+
+    await _plugin.show(9001, 'DEBUG: query done',
+        'found ${overdue.length} overdue entries', debugDetails);
 
     final formatter = DateFormat('MMM d, yyyy');
 
