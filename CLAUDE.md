@@ -3,7 +3,7 @@
 ## What this app is
 Momentum is a Flutter-based automotive enthusiast app — "Strava for cars."
 It tracks real-time driving statistics, stores trip history with route visualization,
-includes a marketplace connecting parts vendors with buyers, and has a leaderboard/social layer.
+and has a leaderboard/social layer.
 This is a capstone project for Lebanese American University (CSC department).
 
 ## Current state
@@ -11,14 +11,17 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/data/services/location_service.dart` — GPS tracking via geolocator, Haversine distance — platform-specific settings: AndroidSettings (200ms interval) and AppleSettings(bestForNavigation, automotiveNavigation)
 - `lib/data/services/trip_service.dart` — avg speed, max speed, distance, duration calculation — EMA removed, 2 km/h zero-clamp, lastReadingInvalid getter — no sensor dependency
 - `lib/data/services/sensor_service.dart` — magnitude-based G-force detection at 20 Hz, brake/accel state machines (0.18G threshold, 300ms duration guard), speed-gated via updateSpeed(). Cornering removed entirely. SensorService is owned by TrackingNotifier only — TripService has no sensor dependency.
-- `lib/data/models/trip_data.dart` — trip data model, cornering fields removed
+- `lib/data/services/weather_service.dart` — fetches weather from Open-Meteo API using lat/lng, maps WMO codes to labels and smoothness multipliers, returns null on error
+- `lib/data/models/trip_data.dart` — trip data model, cornering fields removed, weather fields and smoothnessScore added
 - `lib/features/tracking/screens/tracking_screen.dart` — main tracking screen, display lerp 0.4, zero-snap, fixed-height timer pill — debug panel removed
 - `lib/features/tracking/widgets/speedometer_widget.dart` — speedometer gauge
 - `lib/features/tracking/widgets/stat_card.dart` — stat display cards
 - `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
-- `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance
+- `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance, runs weather fetch and smoothness score computation at trip end
 - `lib/core/theme/app_theme.dart` — app theme
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, smoothness/weather/braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (field: `hardBrakeCount`); accel card label reads "Quick Accels" (field: `hardAccelCount`); card order: map → stats → smoothness → weather → braking → accel
+- `lib/features/leaderboard/screens/leaderboard_screen.dart` — leaderboard screen, queries trips directly, groups by uid client-side, time filter toggle (Today / This Week / This Month / All Time), ranked by smoothnessScore → distance → avgSpeed, current user highlighted with teal border
+- `lib/features/leaderboard/providers/leaderboard_provider.dart` — StateNotifierProvider holding selected time filter and fetched entries
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
 - `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state
@@ -40,7 +43,6 @@ lib/
 ├── features/
 │   ├── tracking/        # Live drive screen
 │   ├── trip_history/    # Past trips, route map, stats
-│   ├── marketplace/     # Parts listings, post item, search
 │   ├── leaderboard/     # Rankings with time filters
 │   ├── profile/         # User profile, car details, maintenance log
 │   └── auth/            # Login, register screens
@@ -97,10 +99,10 @@ lib/
   - Moderate Rain (codes 63, 80–81): 1.15
   - Heavy Rain / Thunderstorm (codes 65, 82, 95–99): 1.25
   - Snow / Sleet (codes 71–77): 1.20
-- Smoothness score formula: `finalScore = min(100, baseScore * weatherMultiplier)`
 - A perfect drive in clear weather still scores 100 — multiplier only makes it easier to reach 100 in bad conditions
 - Stored fields on trip document: `weatherCode` (int), `weatherLabel` (String), `weatherTempC` (double), `weatherMultiplier` (double)
-- Displayed in trip detail as a weather card alongside braking/accel cards
+- Displayed in trip detail as a weather card; hidden for old trips where weatherLabel is empty
+- Weather card currently shows `Icons.wb_sunny_outlined` as a placeholder icon for all weather types — custom painter illustrations planned for polish pass
 
 ### Smoothness score notes
 - Computed once at trip end, stored as `smoothnessScore` (double, 0–100) on the trip document
@@ -112,8 +114,18 @@ lib/
   - If peakAccelG > 0.6G (clamped): deduct `(peakAccelG - 0.6) * 20`
   - Clamp to 0–100, then multiply by weatherMultiplier and clamp again
 - `finalScore = (score.clamp(0, 100) * weatherMultiplier).clamp(0, 100)`
+- No count-based penalties — only G-force intensity matters, so longer trips are not unfairly penalized
 - Stored on trip document and used directly by leaderboard queries — not recomputed at read time
-- Displayed in trip detail as `_SmoothnessCard` (score ≥ 90 → "Excellent", ≥ 75 → "Good", ≥ 60 → "Average", < 60 → "Needs Work"); hidden when smoothnessScore == 0.0
+- Displayed in trip detail as `_SmoothnessCard` (≥90 → "Excellent", ≥75 → "Good", ≥60 → "Average", <60 → "Needs Work"); hidden when smoothnessScore == 0.0
+
+### Leaderboard notes
+- Queries `trips` collection directly — no separate leaderboard collection
+- Filters by `date` range based on selected time filter, then groups by uid client-side keeping each user's best trip
+- Ranked by: smoothnessScore desc → distance desc → avgSpeed desc (tiebreakers)
+- Car model fetched from `users` collection in batches
+- Time filter defaults to This Week
+- Current user's entry highlighted with `AppTheme.accent.withOpacity(0.3)` border
+- Requires a composite Firestore index on (date, smoothnessScore, distance, avgSpeed) — Firebase will print a clickable creation link in the debug console on first query run if not yet created
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
@@ -129,7 +141,7 @@ lib/
 - Username stored in Firestore under users/{uid} — not in Firebase Auth
 - Car details are filled in later on the profile screen
 - Login: email + password only
-- Username is the display identity across leaderboard, marketplace listings, and profile
+- Username is the display identity across leaderboard and profile
 
 ### Firestore collections
 ```
@@ -151,12 +163,9 @@ trips/{tripId}
   - hardAccelCount, peakAccelG, avgAccelG
   - weatherCode (int), weatherLabel (String), weatherTempC (double), weatherMultiplier (double)
   - smoothnessScore (double, 0–100)
-
-listings/{listingId}
-  - uid, username, title, description, price, category, imageUrl, createdAt
 ```
 
-Note: There is no separate `leaderboard` collection. The leaderboard queries the `trips` collection directly, filtered by `date` range and ordered by the relevant metric. This requires composite Firestore indexes on (uid, date, smoothnessScore), (uid, date, maxSpeed), and (uid, date, distance).
+Note: There is no separate `leaderboard` collection. The leaderboard queries the `trips` collection directly. Marketplace feature was scrapped — no `listings` collection.
 
 ### User profile — car details (COMPLETE)
 - Profile screen: `lib/features/profile/screens/profile_screen.dart`
@@ -165,7 +174,6 @@ Note: There is no separate `leaderboard` collection. The leaderboard queries the
 - Reads/writes to Firestore `users/{uid}` and `users/{uid}.car`
 - Stat tiles on profile: total trips + total distance (read-only, from Firestore)
 - Sign out button on profile screen
-- Car details displayed on leaderboard entries and marketplace listings
 
 ### Firebase rules
 - Firestore and Storage are in test mode during development
@@ -216,15 +224,21 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Speed tracking improvements — platform-specific GPS settings, zero-clamp, invalid reading guard, display lerp 0.4
 - G-force sensor tracking — braking G and acceleration G (peak, avg, count) tracked via sensors_plus magnitude approach, saved to Hive and Firestore per trip, displayed in trip detail screen
 - Cleanup — cornering removed from all models, services, and UI; debug panel removed from tracking screen
-- Maintenance log — section on profile screen, Firestore subcollection users/{uid}/maintenance, add/edit/delete with undo snackbar, overdue/due-soon color coding, add/edit bottom sheet with type presets + date pickers
+- Weather on trips — Open-Meteo fetch at trip end, stored on trip document, displayed as card in trip detail
+- Smoothness score — computed at trip end, stored on trip document, displayed as card in trip detail
+- Leaderboard — time filter toggle, queries trips directly, grouped by uid, ranked by smoothness score
+- Maintenance log — section on profile screen, Firestore subcollection, add/edit/delete with undo snackbar, overdue/due-soon color coding
+
+### Known issues
+- **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
+- **Weather icon placeholder** — weather card shows `Icons.wb_sunny_outlined` for all weather types; custom painter illustrations planned for polish pass.
 
 ### Remaining (in build order)
-1. **Weather on trips** — fetch at trip end via Open-Meteo using midpoint GPS coordinate, store weatherCode/weatherLabel/weatherTempC/weatherMultiplier on trip document, display as weather card in trip detail screen
-2. **Smoothness score** — compute at trip end using brake/accel data + weather multiplier, store as smoothnessScore on trip document, display in trip detail screen
-3. **Leaderboard** — queries trips collection directly, four time filters (Today / This Week / This Month / All Time) as a toggle, ranked by smoothness score (primary), top speed, total distance
-5. **Marketplace** — browse listings, post item form with Firebase Storage image upload, search/filter by category
-6. **AI driving coach** — automatic post-trip Claude API analysis triggered at trip end, result stored per trip in Firestore, displayed as a card in trip detail screen
-7. **Polish pass** — animations, transitions, edge cases
+1. **Share Trip card** — shareable image via `RepaintBoundary` + `google_maps_flutter`'s `takeSnapshot()`. Layout: route map snapshot top-left (~65% width/height), stats stacked vertically to its right (max speed, avg speed, distance, duration), weather + smoothness score side by side below the map, Momentum branding at bottom. Share via `share_plus`. Button in trip detail labeled "Share Trip"
+2. **Push notifications for overdue maintenance** — on app launch, check all maintenance entries, fire a local notification for any where nextDueDate < today. Use `flutter_local_notifications`, on-open-only (no background service). Requires POST_NOTIFICATIONS permission on Android 13+
+3. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
+4. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
+5. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -235,3 +249,5 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Map: use `google_maps_flutter` — do not use `flutter_map` for new map work
 - Keep all screens under `lib/features/<feature>/screens/` and widgets under `lib/features/<feature>/widgets/`
 - Weather fetch and smoothness score computation both happen inside `tracking_provider.dart` at trip end — do not add weather or scoring logic to `trip_service.dart`
+- SensorService lives in TrackingNotifier only — do not add back to TripService
+- `flutter analyze` must be clean after every prompt
