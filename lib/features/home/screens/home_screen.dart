@@ -54,13 +54,23 @@ class _HomeScreenState extends State<HomeScreen> {
             left: 0,
             right: 0,
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                color: Colors.black87,
-                child: Text(
-                  'iOS perm: ${NotificationService.iosPermissionGranted?.toString() ?? 'null'}',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    color: Colors.black87,
+                    child: Text(
+                      'iOS perm: ${NotificationService.iosPermissionGranted?.toString() ?? 'null'}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  ElevatedButton(
+                    onPressed: NotificationService.debugTestNotification,
+                    child: const Text('Test Notif'),
+                  ),
+                ],
               ),
             ),
           ),

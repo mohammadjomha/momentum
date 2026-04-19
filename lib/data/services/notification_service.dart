@@ -42,6 +42,7 @@ class NotificationService {
   }
 
   static Future<void> debugTestNotification() async {
+    await Future.delayed(const Duration(seconds: 5));
     await _plugin.show(
       999,
       'Momentum Test',
