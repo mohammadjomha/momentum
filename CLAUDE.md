@@ -28,6 +28,8 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/profile/models/maintenance_entry.dart` — MaintenanceEntry model with toMap()/fromDoc()
 - `lib/features/profile/providers/maintenance_provider.dart` — StateNotifierProvider streaming maintenance entries; addEntry/updateEntry/deleteEntry
 - `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
+- `lib/features/trip_history/widgets/share_card_painter.dart` — CustomPainter for route normalization and drawing (do not modify drawing logic without discussion)
+- `lib/features/trip_history/widgets/share_trip_card.dart` — 1080×1920 share card widget; weather and smoothness follow the same hide conditions as trip detail (hide if empty/zero)
 
 ## Architecture — feature-based structure
 New features go under `lib/features/`:
@@ -60,6 +62,8 @@ lib/
 - Motion sensors: sensors_plus
 - Routing: go_router
 - Weather: Open-Meteo API (free, no key required) — fetched at trip end using midpoint GPS coordinate
+- Share: share_plus ^10.1.4 — shares the trip card PNG via native share sheet
+- Temp files: path_provider ^2.1.4 — used to write the share card PNG to a temp directory before sharing
 
 ### Map implementation notes
 - `google_maps_flutter` is the active map package — `flutter_map` and `latlong2` remain in pubspec.yaml but are not used for rendering
@@ -182,7 +186,7 @@ Note: There is no separate `leaderboard` collection. The leaderboard queries the
 
 ## iOS support
 - `ios/Podfile` — iOS 13.0 deployment target, `permission_handler` macros enabled
-- `ios/Runner/Info.plist` — location + motion permission keys, `UIBackgroundModes: location`, `GMSApiKey` placeholder (patched at CI build time)
+- `ios/Runner/Info.plist` — location + motion permission keys, `UIBackgroundModes: location`, `GMSApiKey` placeholder (patched at CI build time), `NSPhotoLibraryAddUsageDescription` for save-to-gallery on share
 - `ios/Runner/AppDelegate.swift` — calls `GMSServices.provideAPIKey(...)` reading from `Info.plist`
 - `GoogleService-Info.plist` — injected at CI build time via GitHub Actions secret (not committed)
 - GitHub Actions workflow `iOS-ipa-build` — manual trigger, produces unsigned IPA artifact
@@ -228,6 +232,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Smoothness score — computed at trip end, stored on trip document, displayed as card in trip detail
 - Leaderboard — time filter toggle, queries trips directly, grouped by uid, ranked by smoothness score
 - Maintenance log — section on profile screen, Firestore subcollection, add/edit/delete with undo snackbar, overdue/due-soon color coding
+- Share Trip — RepaintBoundary + RenderRepaintBoundary.toImage() pipeline captures a 1080×1920 PNG off-screen. Card layout: route polyline (teal, no map base layer) in left column (65% width), four stats stacked vertically in right column (35% width), weather + smoothness side by side below, branding strip (@username + Momentum) at bottom. Shared via share_plus. Button in trip detail screen after accel card. NSPhotoLibraryAddUsageDescription added to ios/Runner/Info.plist for iOS save-to-gallery support.
 
 ### Known issues
 - **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
@@ -235,10 +240,9 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - **Push notifications (iOS)** — Android works correctly: system notification fires on app launch for each overdue maintenance entry. iOS notifications are implemented (flutter_local_notifications, permission granted) but delivery is unreliable — notifications only appear when the app is backgrounded shortly after launch due to iOS foreground suppression. No code fix found without Xcode/APNs debugging access. Feature is functional on Android for demo purposes.
 
 ### Remaining (in build order)
-1. **Share Trip card** — shareable image via `RepaintBoundary` + `google_maps_flutter`'s `takeSnapshot()`. Layout: route map snapshot top-left (~65% width/height), stats stacked vertically to its right (max speed, avg speed, distance, duration), weather + smoothness score side by side below the map, Momentum branding at bottom. Share via `share_plus`. Button in trip detail labeled "Share Trip"
-2. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
-3. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
-4. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+1. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
+2. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
+3. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -250,4 +254,6 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Keep all screens under `lib/features/<feature>/screens/` and widgets under `lib/features/<feature>/widgets/`
 - Weather fetch and smoothness score computation both happen inside `tracking_provider.dart` at trip end — do not add weather or scoring logic to `trip_service.dart`
 - SensorService lives in TrackingNotifier only — do not add back to TripService
+- Do not modify `share_card_painter.dart` drawing logic without discussion
+- Weather and smoothness on the share card follow the same hide conditions as trip detail: hide weather if `weatherLabel.isEmpty`, hide smoothness if `smoothnessScore == 0.0`
 - `flutter analyze` must be clean after every prompt.
