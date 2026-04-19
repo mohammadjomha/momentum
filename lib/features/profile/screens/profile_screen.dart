@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/services/auth_service.dart';
+import '../models/maintenance_entry.dart';
+import '../providers/maintenance_provider.dart';
 import '../providers/profile_provider.dart';
+import '../widgets/maintenance_bottom_sheet.dart';
 
 // Year list: 2025 down to 1970
 final _years = List.generate(
@@ -192,6 +195,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         SliverToBoxAdapter(child: _buildSaveArea()),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+            child: Row(
+              children: [
+                Expanded(child: _buildSectionLabel('MAINTENANCE')),
+                IconButton(
+                  onPressed: () =>
+                      showMaintenanceBottomSheet(context, ref),
+                  icon: const Icon(Icons.add, color: AppTheme.accent),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  splashRadius: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _buildMaintenanceSection(),
+          ),
+        ),
         SliverToBoxAdapter(child: _buildSignOutButton()),
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
@@ -707,6 +734,74 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Maintenance section
+  // ---------------------------------------------------------------------------
+
+  Widget _buildMaintenanceSection() {
+    final state = ref.watch(maintenanceProvider);
+    return state.when(
+      loading: () => const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: CircularProgressIndicator(color: AppTheme.accent),
+        ),
+      ),
+      error: (_, s) => const Text(
+        'Failed to load maintenance records.',
+        style: TextStyle(color: AppTheme.speedRed, fontSize: 13),
+      ),
+      data: (entries) {
+        if (entries.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text(
+                'No maintenance records yet',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+              ),
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: entries
+              .map((e) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _MaintenanceCard(
+                      entry: e,
+                      onEdit: () => showMaintenanceBottomSheet(
+                        context,
+                        ref,
+                        existing: e,
+                      ),
+                      onDelete: () => _confirmDelete(e),
+                    ),
+                  ))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmDelete(MaintenanceEntry entry) async {
+    await ref.read(maintenanceProvider.notifier).deleteEntry(entry.entryId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${entry.type} deleted'),
+        backgroundColor: AppTheme.surfaceHigh,
+        action: SnackBarAction(
+          label: 'UNDO',
+          textColor: AppTheme.accent,
+          onPressed: () async {
+            await ref.read(maintenanceProvider.notifier).addEntry(entry);
+          },
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Sign out
   // ---------------------------------------------------------------------------
 
@@ -1073,6 +1168,113 @@ class _DropdownSheetState<T> extends State<_DropdownSheet<T>> {
           ],
         );
       },
+    );
+  }
+}
+
+// =============================================================================
+// Maintenance entry card
+// =============================================================================
+
+class _MaintenanceCard extends StatelessWidget {
+  final MaintenanceEntry entry;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _MaintenanceCard({
+    required this.entry,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _dueDateColor(DateTime due) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dueDay = DateTime(due.year, due.month, due.day);
+    if (dueDay.isBefore(today)) return AppTheme.speedRed;
+    if (dueDay.difference(today).inDays <= 30) return AppTheme.speedYellow;
+    return AppTheme.speedGreen;
+  }
+
+  String _formatDate(DateTime d) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey(entry.entryId),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        decoration: BoxDecoration(
+          color: AppTheme.speedRed.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(Icons.delete_outline, color: AppTheme.speedRed),
+      ),
+      onDismissed: (_) => onDelete(),
+      child: GestureDetector(
+        onTap: onEdit,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppTheme.accent.withValues(alpha: 0.15),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                entry.type,
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Last done: ${_formatDate(entry.lastDoneDate)}',
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              if (entry.nextDueDate != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Next due: ${_formatDate(entry.nextDueDate!)}',
+                  style: TextStyle(
+                    color: _dueDateColor(entry.nextDueDate!),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+              if (entry.notes != null && entry.notes!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  entry.notes!,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

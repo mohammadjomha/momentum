@@ -19,9 +19,12 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance
 - `lib/core/theme/app_theme.dart` — app theme
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, smoothness/weather/braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (field: `hardBrakeCount`); accel card label reads "Quick Accels" (field: `hardAccelCount`); card order: map → stats → smoothness → weather → braking → accel
-- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, sign out
+- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
 - `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state
+- `lib/features/profile/models/maintenance_entry.dart` — MaintenanceEntry model with toMap()/fromDoc()
+- `lib/features/profile/providers/maintenance_provider.dart` — StateNotifierProvider streaming maintenance entries; addEntry/updateEntry/deleteEntry
+- `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
 
 ## Architecture — feature-based structure
 New features go under `lib/features/`:
@@ -213,12 +216,12 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Speed tracking improvements — platform-specific GPS settings, zero-clamp, invalid reading guard, display lerp 0.4
 - G-force sensor tracking — braking G and acceleration G (peak, avg, count) tracked via sensors_plus magnitude approach, saved to Hive and Firestore per trip, displayed in trip detail screen
 - Cleanup — cornering removed from all models, services, and UI; debug panel removed from tracking screen
+- Maintenance log — section on profile screen, Firestore subcollection users/{uid}/maintenance, add/edit/delete with undo snackbar, overdue/due-soon color coding, add/edit bottom sheet with type presets + date pickers
 
 ### Remaining (in build order)
 1. **Weather on trips** — fetch at trip end via Open-Meteo using midpoint GPS coordinate, store weatherCode/weatherLabel/weatherTempC/weatherMultiplier on trip document, display as weather card in trip detail screen
 2. **Smoothness score** — compute at trip end using brake/accel data + weather multiplier, store as smoothnessScore on trip document, display in trip detail screen
-3. **Maintenance log** — section on profile screen, Firestore subcollection users/{uid}/maintenance, add/edit/delete entries, overdue items highlighted in amber/red
-4. **Leaderboard** — queries trips collection directly, four time filters (Today / This Week / This Month / All Time) as a toggle, ranked by smoothness score (primary), top speed, total distance
+3. **Leaderboard** — queries trips collection directly, four time filters (Today / This Week / This Month / All Time) as a toggle, ranked by smoothness score (primary), top speed, total distance
 5. **Marketplace** — browse listings, post item form with Firebase Storage image upload, search/filter by category
 6. **AI driving coach** — automatic post-trip Claude API analysis triggered at trip end, result stored per trip in Firestore, displayed as a card in trip detail screen
 7. **Polish pass** — animations, transitions, edge cases
