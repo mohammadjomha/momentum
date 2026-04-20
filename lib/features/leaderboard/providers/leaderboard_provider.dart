@@ -12,8 +12,9 @@ class LeaderboardEntry {
   final String username;
   final String? carModel;
   final double smoothnessScore;
-  final double maxSpeed;
   final double distance;
+  final double avgSpeed;
+  final int tripCount;
 
   const LeaderboardEntry({
     required this.rank,
@@ -21,8 +22,9 @@ class LeaderboardEntry {
     required this.username,
     this.carModel,
     required this.smoothnessScore,
-    required this.maxSpeed,
     required this.distance,
+    required this.avgSpeed,
+    required this.tripCount,
   });
 }
 
@@ -89,39 +91,57 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
       final snapshot = await query.get();
       final trips = snapshot.docs.map(TripModel.fromDoc).toList();
 
-      // Group by uid, keep best trip per user
-      final Map<String, TripModel> bestByUid = {};
-      for (final trip in trips) {
-        final existing = bestByUid[trip.uid];
-        if (existing == null || _isBetter(trip, existing)) {
-          bestByUid[trip.uid] = trip;
-        }
+      // Aggregate all trips per user (exclude sub-0.5 km trips)
+      final Map<String, List<TripModel>> tripsByUid = {};
+      for (final trip in trips.where((t) => t.distance >= 0.5)) {
+        tripsByUid.putIfAbsent(trip.uid, () => []).add(trip);
       }
 
-      // Sort the winners
-      final sorted = bestByUid.values.toList()
+      // Build aggregated stats per user
+      final aggregated = tripsByUid.entries.map((e) {
+        final uid = e.key;
+        final userTrips = e.value;
+        final scored = userTrips.where((t) => t.smoothnessScore > 0).toList();
+        final avgSmoothness = scored.isEmpty
+            ? 0.0
+            : scored.fold(0.0, (s, t) => s + t.smoothnessScore) / scored.length;
+        final totalDistance =
+            userTrips.fold(0.0, (s, t) => s + t.distance);
+        final avgSpd = userTrips.isEmpty
+            ? 0.0
+            : userTrips.fold(0.0, (s, t) => s + t.avgSpeed) / userTrips.length;
+        return (
+          uid: uid,
+          username: userTrips.first.username,
+          avgSmoothness: avgSmoothness,
+          totalDistance: totalDistance,
+          avgSpeed: avgSpd,
+          tripCount: userTrips.length,
+        );
+      }).toList()
         ..sort((a, b) {
-          final cmp = b.smoothnessScore.compareTo(a.smoothnessScore);
+          final cmp = b.avgSmoothness.compareTo(a.avgSmoothness);
           if (cmp != 0) return cmp;
-          final cmp2 = b.distance.compareTo(a.distance);
+          final cmp2 = b.totalDistance.compareTo(a.totalDistance);
           if (cmp2 != 0) return cmp2;
           return b.avgSpeed.compareTo(a.avgSpeed);
         });
 
       // Fetch car info for each uid
-      final uids = sorted.map((t) => t.uid).toList();
+      final uids = aggregated.map((a) => a.uid).toList();
       final carByUid = await _fetchCarModels(uids);
 
-      final entries = sorted.asMap().entries.map((e) {
-        final trip = e.value;
+      final entries = aggregated.asMap().entries.map((e) {
+        final agg = e.value;
         return LeaderboardEntry(
           rank: e.key + 1,
-          uid: trip.uid,
-          username: trip.username,
-          carModel: carByUid[trip.uid],
-          smoothnessScore: trip.smoothnessScore,
-          maxSpeed: trip.maxSpeed,
-          distance: trip.distance,
+          uid: agg.uid,
+          username: agg.username,
+          carModel: carByUid[agg.uid],
+          smoothnessScore: agg.avgSmoothness,
+          distance: agg.totalDistance,
+          avgSpeed: agg.avgSpeed,
+          tripCount: agg.tripCount,
         );
       }).toList();
 
@@ -129,14 +149,6 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
-  }
-
-  bool _isBetter(TripModel a, TripModel b) {
-    final cmp = a.smoothnessScore.compareTo(b.smoothnessScore);
-    if (cmp != 0) return cmp > 0;
-    final cmp2 = a.distance.compareTo(b.distance);
-    if (cmp2 != 0) return cmp2 > 0;
-    return a.avgSpeed > b.avgSpeed;
   }
 
   Future<Map<String, String?>> _fetchCarModels(List<String> uids) async {

@@ -266,7 +266,7 @@ class _EntryCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                '↑ ${entry.maxSpeed.toStringAsFixed(0)} km/h',
+                '${entry.tripCount} trip${entry.tripCount == 1 ? '' : 's'}',
                 style: const TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 11,
