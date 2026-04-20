@@ -30,6 +30,7 @@ jobs:
             ios/Runner/Info.plist
       - name: Inject Anthropic API key
         run: |
+          mkdir -p lib/config
           echo "const String anthropicApiKey = '${{ secrets.ANTHROPIC_API_KEY }}';" \
             > lib/config/secrets.dart
       - run: pod repo update
