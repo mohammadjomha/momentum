@@ -48,6 +48,9 @@ class TripModel {
   // Smoothness
   final double smoothnessScore;
 
+  // AI coaching
+  final String? coachingNote;
+
   const TripModel({
     required this.id,
     required this.uid,
@@ -69,6 +72,7 @@ class TripModel {
     this.weatherTempC = 0.0,
     this.weatherMultiplier = 1.0,
     this.smoothnessScore = 0.0,
+    this.coachingNote,
   });
 
   Map<String, dynamic> toMap() => {
@@ -91,6 +95,7 @@ class TripModel {
         'weatherTempC': weatherTempC,
         'weatherMultiplier': weatherMultiplier,
         'smoothnessScore': smoothnessScore,
+        if (coachingNote != null) 'coachingNote': coachingNote,
       };
 
   factory TripModel.fromDoc(DocumentSnapshot doc) {
@@ -119,6 +124,7 @@ class TripModel {
       weatherTempC: (m['weatherTempC'] as num?)?.toDouble() ?? 0.0,
       weatherMultiplier: (m['weatherMultiplier'] as num?)?.toDouble() ?? 1.0,
       smoothnessScore: (m['smoothnessScore'] as num?)?.toDouble() ?? 0.0,
+      coachingNote: m['coachingNote'] as String?,
     );
   }
 }

@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/trip_model.dart';
+import '../services/coaching_service.dart';
 import '../widgets/share_trip_card.dart';
 
 class TripDetailScreen extends StatefulWidget {
@@ -22,6 +23,34 @@ class TripDetailScreen extends StatefulWidget {
 class _TripDetailScreenState extends State<TripDetailScreen> {
   final GlobalKey _shareBoundaryKey = GlobalKey();
   bool _isSharing = false;
+  String? _coachingNote;
+  bool _coachingLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCoaching();
+  }
+
+  Future<void> _loadCoaching() async {
+    if (widget.trip.coachingNote != null) {
+      setState(() => _coachingNote = widget.trip.coachingNote);
+      return;
+    }
+    setState(() => _coachingLoading = true);
+    try {
+      final note =
+          await CoachingService.generateAndStoreCoachingNote(widget.trip);
+      if (mounted) setState(() => _coachingNote = note);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _coachingNote =
+            'Unable to generate coaching note. Please try again later.');
+      }
+    } finally {
+      if (mounted) setState(() => _coachingLoading = false);
+    }
+  }
 
   String _formatDuration(Duration d) {
     final h = d.inHours;
@@ -137,6 +166,13 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       const SliverToBoxAdapter(child: SizedBox(height: 12)),
                       SliverToBoxAdapter(
                           child: _AccelCard(trip: widget.trip)),
+                      const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      SliverToBoxAdapter(
+                        child: _CoachingCard(
+                          loading: _coachingLoading,
+                          note: _coachingNote,
+                        ),
+                      ),
                       const SliverToBoxAdapter(child: SizedBox(height: 20)),
                       SliverToBoxAdapter(
                         child: _ShareButton(
@@ -794,6 +830,84 @@ class _SmoothnessCard extends StatelessWidget {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+const _kNoSensorMessage =
+    'Sensor data unavailable for this trip. Record a new trip to receive AI coaching.';
+
+class _CoachingCard extends StatelessWidget {
+  final bool loading;
+  final String? note;
+  const _CoachingCard({required this.loading, required this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    final isNoSensor = note == _kNoSensorMessage;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: _sensorCardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isNoSensor
+                    ? Icons.sensors_off_outlined
+                    : Icons.psychology_outlined,
+                color: AppTheme.accent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                'AI COACHING',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (loading)
+            const Row(
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    color: AppTheme.accent,
+                    strokeWidth: 2,
+                  ),
+                ),
+                SizedBox(width: 12),
+                Text(
+                  'Analyzing your drive\u2026',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            )
+          else
+            Text(
+              note ?? '',
+              style: TextStyle(
+                color: isNoSensor
+                    ? AppTheme.textSecondary
+                    : AppTheme.textPrimary,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
         ],
       ),
     );
