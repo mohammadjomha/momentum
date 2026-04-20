@@ -42,18 +42,12 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
 
       final boundary = _shareBoundaryKey.currentContext
           ?.findRenderObject() as RenderRepaintBoundary?;
-      if (boundary == null) {
-        if (mounted) setState(() => _isSharing = false);
-        return;
-      }
+      if (boundary == null) return;
 
       final image = await boundary.toImage(pixelRatio: 1.0);
       final byteData =
           await image.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) {
-        if (mounted) setState(() => _isSharing = false);
-        return;
-      }
+      if (byteData == null) return;
       final bytes = byteData.buffer.asUint8List();
 
       final tempDir = await getTemporaryDirectory();
@@ -61,8 +55,18 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           '${tempDir.path}/momentum_trip_${widget.trip.id}.png';
       final file = await File(filePath).writeAsBytes(bytes);
 
-      await Share.shareXFiles([XFile(file.path)]);
-      if (mounted) setState(() => _isSharing = false);
+      try {
+        final result = await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'My trip on Momentum',
+        );
+        // result comes back on both platforms after sheet interaction
+        debugPrint('Share result: ${result.status}');
+      } catch (e) {
+        debugPrint('Share error: $e');
+      } finally {
+        if (mounted) setState(() => _isSharing = false);
+      }
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }
