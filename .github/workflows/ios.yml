@@ -28,6 +28,10 @@ jobs:
         run: |
           /usr/libexec/PlistBuddy -c "Set :GMSApiKey ${{ secrets.GOOGLE_MAPS_API_KEY }}" \
             ios/Runner/Info.plist
+      - name: Inject Anthropic API key
+        run: |
+          echo "const String anthropicApiKey = '${{ secrets.ANTHROPIC_API_KEY }}';" \
+            > lib/config/secrets.dart
       - run: pod repo update
         working-directory: ios
       - run: flutter build ios --release --no-codesign
