@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../friends/widgets/user_mini_card.dart';
 import '../providers/leaderboard_provider.dart';
 
 class LeaderboardScreen extends ConsumerWidget {
@@ -133,14 +134,14 @@ class _FilterToggle extends StatelessWidget {
   }
 }
 
-class _Body extends StatelessWidget {
+class _Body extends ConsumerWidget {
   final LeaderboardState state;
   final String? currentUid;
 
   const _Body({required this.state, required this.currentUid});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (state.isLoading) {
       return const Center(
         child: CircularProgressIndicator(
@@ -151,10 +152,10 @@ class _Body extends StatelessWidget {
     }
 
     if (state.error != null) {
-      return Center(
+      return const Center(
         child: Text(
           'Failed to load leaderboard',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
         ),
       );
     }
@@ -174,7 +175,24 @@ class _Body extends StatelessWidget {
       itemBuilder: (context, i) {
         final entry = state.entries[i];
         final isSelf = entry.uid == currentUid;
-        return _EntryCard(entry: entry, isSelf: isSelf);
+        final allTime = state.allTimeByUid[entry.uid] ?? entry;
+        return _EntryCard(
+          entry: entry,
+          isSelf: isSelf,
+          onTap: isSelf || currentUid == null
+              ? null
+              : () => showUserMiniCard(
+                    context,
+                    ref,
+                    currentUid: currentUid!,
+                    targetUid: entry.uid,
+                    username: entry.username,
+                    carModel: entry.carModel,
+                    tripCount: allTime.tripCount,
+                    totalDistance: allTime.distance,
+                    avgSmoothness: allTime.smoothnessScore,
+                  ),
+        );
       },
     );
   }
@@ -183,12 +201,24 @@ class _Body extends StatelessWidget {
 class _EntryCard extends StatelessWidget {
   final LeaderboardEntry entry;
   final bool isSelf;
+  final VoidCallback? onTap;
 
-  const _EntryCard({required this.entry, required this.isSelf});
+  const _EntryCard({
+    required this.entry,
+    required this.isSelf,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        splashColor: AppTheme.accent.withValues(alpha: 0.08),
+        highlightColor: AppTheme.accent.withValues(alpha: 0.04),
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -283,6 +313,8 @@ class _EntryCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+      ),
       ),
     );
   }

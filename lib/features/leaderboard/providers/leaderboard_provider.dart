@@ -30,12 +30,14 @@ class LeaderboardEntry {
 
 class LeaderboardState {
   final List<LeaderboardEntry> entries;
+  final Map<String, LeaderboardEntry> allTimeByUid;
   final LeaderboardFilter filter;
   final bool isLoading;
   final String? error;
 
   const LeaderboardState({
     this.entries = const [],
+    this.allTimeByUid = const {},
     this.filter = LeaderboardFilter.thisWeek,
     this.isLoading = false,
     this.error,
@@ -43,12 +45,14 @@ class LeaderboardState {
 
   LeaderboardState copyWith({
     List<LeaderboardEntry>? entries,
+    Map<String, LeaderboardEntry>? allTimeByUid,
     LeaderboardFilter? filter,
     bool? isLoading,
     String? error,
   }) =>
       LeaderboardState(
         entries: entries ?? this.entries,
+        allTimeByUid: allTimeByUid ?? this.allTimeByUid,
         filter: filter ?? this.filter,
         isLoading: isLoading ?? this.isLoading,
         error: error,
@@ -71,84 +75,134 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final db = FirebaseFirestore.instance;
-      Query<Map<String, dynamic>> query = db.collection('trips');
-
       final now = DateTime.now();
       final dateFilter = _startDate(state.filter, now);
-      if (dateFilter != null) {
-        query = query.where(
-          'date',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(dateFilter),
-        );
-      }
 
-      query = query
-          .orderBy('date', descending: false)
-          .orderBy('smoothnessScore', descending: true)
-          .orderBy('distance', descending: true)
-          .orderBy('avgSpeed', descending: true);
+      // Run filtered query and all-time query in parallel
+      // (skip second query if filter is already allTime)
+      final filteredFuture = _queryTrips(db, dateFilter);
+      final allTimeFuture = state.filter == LeaderboardFilter.allTime
+          ? Future.value(<TripModel>[])
+          : _queryTrips(db, null);
 
-      final snapshot = await query.get();
-      final trips = snapshot.docs.map(TripModel.fromDoc).toList();
+      final results = await Future.wait([filteredFuture, allTimeFuture]);
+      final filteredTrips = results[0];
+      final allTimeTrips =
+          state.filter == LeaderboardFilter.allTime ? filteredTrips : results[1];
 
-      // Aggregate all trips per user (exclude sub-0.5 km trips)
-      final Map<String, List<TripModel>> tripsByUid = {};
-      for (final trip in trips.where((t) => t.distance >= 0.5)) {
-        tripsByUid.putIfAbsent(trip.uid, () => []).add(trip);
-      }
+      // Build filtered entries
+      final allUids = <String>{};
+      final entries = _buildEntries(filteredTrips, rankOffset: 1);
+      allUids.addAll(entries.map((e) => e.uid));
 
-      // Build aggregated stats per user
-      final aggregated = tripsByUid.entries.map((e) {
-        final uid = e.key;
-        final userTrips = e.value;
-        final scored = userTrips.where((t) => t.smoothnessScore > 0).toList();
-        final avgSmoothness = scored.isEmpty
-            ? 0.0
-            : scored.fold(0.0, (s, t) => s + t.smoothnessScore) / scored.length;
-        final totalDistance =
-            userTrips.fold(0.0, (s, t) => s + t.distance);
-        final avgSpd = userTrips.isEmpty
-            ? 0.0
-            : userTrips.fold(0.0, (s, t) => s + t.avgSpeed) / userTrips.length;
-        return (
-          uid: uid,
-          username: userTrips.first.username,
-          avgSmoothness: avgSmoothness,
-          totalDistance: totalDistance,
-          avgSpeed: avgSpd,
-          tripCount: userTrips.length,
-        );
-      }).toList()
-        ..sort((a, b) {
-          final cmp = b.avgSmoothness.compareTo(a.avgSmoothness);
-          if (cmp != 0) return cmp;
-          final cmp2 = b.totalDistance.compareTo(a.totalDistance);
-          if (cmp2 != 0) return cmp2;
-          return b.avgSpeed.compareTo(a.avgSpeed);
-        });
+      // Build all-time lookup (includes any uid not in filtered set)
+      final allTimeEntries = _buildEntries(allTimeTrips, rankOffset: 1);
+      allUids.addAll(allTimeEntries.map((e) => e.uid));
 
-      // Fetch car info for each uid
-      final uids = aggregated.map((a) => a.uid).toList();
-      final carByUid = await _fetchCarModels(uids);
+      final carByUid = await _fetchCarModels(allUids.toList());
 
-      final entries = aggregated.asMap().entries.map((e) {
-        final agg = e.value;
-        return LeaderboardEntry(
-          rank: e.key + 1,
-          uid: agg.uid,
-          username: agg.username,
-          carModel: carByUid[agg.uid],
-          smoothnessScore: agg.avgSmoothness,
-          distance: agg.totalDistance,
-          avgSpeed: agg.avgSpeed,
-          tripCount: agg.tripCount,
-        );
-      }).toList();
+      final rankedEntries = entries
+          .map((e) => LeaderboardEntry(
+                rank: e.rank,
+                uid: e.uid,
+                username: e.username,
+                carModel: carByUid[e.uid],
+                smoothnessScore: e.smoothnessScore,
+                distance: e.distance,
+                avgSpeed: e.avgSpeed,
+                tripCount: e.tripCount,
+              ))
+          .toList();
 
-      state = state.copyWith(entries: entries, isLoading: false);
+      final allTimeByUid = {
+        for (final e in allTimeEntries)
+          e.uid: LeaderboardEntry(
+            rank: e.rank,
+            uid: e.uid,
+            username: e.username,
+            carModel: carByUid[e.uid],
+            smoothnessScore: e.smoothnessScore,
+            distance: e.distance,
+            avgSpeed: e.avgSpeed,
+            tripCount: e.tripCount,
+          ),
+      };
+
+      state = state.copyWith(
+        entries: rankedEntries,
+        allTimeByUid: allTimeByUid,
+        isLoading: false,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
+  }
+
+  Future<List<TripModel>> _queryTrips(
+    FirebaseFirestore db,
+    DateTime? since,
+  ) async {
+    Query<Map<String, dynamic>> q = db.collection('trips');
+    if (since != null) {
+      q = q.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(since));
+    }
+    q = q
+        .orderBy('date', descending: false)
+        .orderBy('smoothnessScore', descending: true)
+        .orderBy('distance', descending: true)
+        .orderBy('avgSpeed', descending: true);
+    final snap = await q.get();
+    return snap.docs.map(TripModel.fromDoc).toList();
+  }
+
+  List<LeaderboardEntry> _buildEntries(
+    List<TripModel> trips, {
+    required int rankOffset,
+  }) {
+    final Map<String, List<TripModel>> byUid = {};
+    for (final t in trips.where((t) => t.distance >= 0.5)) {
+      byUid.putIfAbsent(t.uid, () => []).add(t);
+    }
+    final agg = byUid.entries.map((e) {
+      final userTrips = e.value;
+      final scored = userTrips.where((t) => t.smoothnessScore > 0).toList();
+      final avgSmoothness = scored.isEmpty
+          ? 0.0
+          : scored.fold(0.0, (s, t) => s + t.smoothnessScore) / scored.length;
+      final totalDistance = userTrips.fold(0.0, (s, t) => s + t.distance);
+      final avgSpd = userTrips.isEmpty
+          ? 0.0
+          : userTrips.fold(0.0, (s, t) => s + t.avgSpeed) / userTrips.length;
+      return (
+        uid: e.key,
+        username: userTrips.first.username,
+        avgSmoothness: avgSmoothness,
+        totalDistance: totalDistance,
+        avgSpeed: avgSpd,
+        tripCount: userTrips.length,
+      );
+    }).toList()
+      ..sort((a, b) {
+        final cmp = b.avgSmoothness.compareTo(a.avgSmoothness);
+        if (cmp != 0) return cmp;
+        final cmp2 = b.totalDistance.compareTo(a.totalDistance);
+        if (cmp2 != 0) return cmp2;
+        return b.avgSpeed.compareTo(a.avgSpeed);
+      });
+
+    return agg.asMap().entries.map((e) {
+      final a = e.value;
+      return LeaderboardEntry(
+        rank: e.key + rankOffset,
+        uid: a.uid,
+        username: a.username,
+        carModel: null,
+        smoothnessScore: a.avgSmoothness,
+        distance: a.totalDistance,
+        avgSpeed: a.avgSpeed,
+        tripCount: a.tripCount,
+      );
+    }).toList();
   }
 
   Future<Map<String, String?>> _fetchCarModels(List<String> uids) async {
