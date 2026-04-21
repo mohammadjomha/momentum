@@ -10,6 +10,7 @@ import 'data/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
 import 'features/friends/screens/friend_comparison_screen.dart';
+import 'features/friends/screens/friend_search_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'firebase_options.dart';
 
@@ -67,6 +68,10 @@ void main() async {
         builder: (context, state) => FriendComparisonScreen(
           friendUid: state.pathParameters['friendUid']!,
         ),
+      ),
+      GoRoute(
+        path: '/friends/search',
+        builder: (context, state) => const FriendSearchScreen(),
       ),
     ],
   );

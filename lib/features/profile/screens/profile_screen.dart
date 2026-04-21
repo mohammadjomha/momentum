@@ -850,16 +850,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 32, 20, 8),
-          child: Text(
-            'FRIENDS',
-            style: TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 2,
-            ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'FRIENDS',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: () => context.push('/friends/search'),
+                icon: const Icon(Icons.person_add_outlined,
+                    color: AppTheme.accent),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                splashRadius: 20,
+                tooltip: 'Find Friends',
+              ),
+            ],
           ),
         ),
         Padding(
