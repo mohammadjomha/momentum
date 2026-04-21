@@ -30,6 +30,12 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
 - `lib/features/trip_history/widgets/share_card_painter.dart` — CustomPainter for route normalization and drawing (do not modify drawing logic without discussion)
 - `lib/features/trip_history/widgets/share_trip_card.dart` — 1080×1920 share card widget; weather and smoothness follow the same hide conditions as trip detail (hide if empty/zero)
+- `lib/features/clubs/services/club_service.dart` — all club, post, comment, like, pin logic
+- `lib/features/clubs/providers/club_provider.dart` — userClubsProvider, allClubsProvider, clubDetailProvider, clubPostsProvider, clubCommentsProvider
+- `lib/features/clubs/widgets/post_card.dart` — feed post card, CommentsSheet, EditPostSheet
+- `lib/features/clubs/widgets/create_post_sheet.dart` — new post bottom sheet (image + caption)
+- `lib/features/clubs/screens/clubs_hub_screen.dart` — MY CLUBS + DISCOVER tabs, embedded mode
+- `lib/features/clubs/screens/club_detail_screen.dart` — feed + leaderboard tabs, pin, join/leave/delete
 - `lib/features/ai_coach/services/coaching_service.dart` — calls Claude API at trip end with trip stats, returns a coaching note string; falls back to a static no-sensor message when sensor data is unavailable; result stored as `coachingNote` (String) on trip document; lazy generation: only called once and cached, not regenerated on re-open
 - `lib/features/friends/services/friend_service.dart` — sends/accepts/declines friend requests, removes friends, streams incoming pending requests; uses `friend_requests` Firestore collection and `friends` array field on `users/{uid}`
 - `lib/features/friends/models/friend_entry.dart` — FriendEntry model (uid, username, carModel)
@@ -77,6 +83,7 @@ lib/
 - Temp files: path_provider ^2.1.4 — used to write the share card PNG to a temp directory before sharing
 - AI coach: Anthropic Claude API via `anthropic` Dart SDK — key stored in `lib/config/secrets.dart` (gitignored)
 - Notifications: shared_preferences — used to track which friend-request IDs have already triggered an Android notification, preventing duplicates on app relaunch
+- Image picker: image_picker ^1.1.2 — used in CreatePostSheet for camera and gallery image selection
 
 ### Map implementation notes
 - `google_maps_flutter` is the active map package — `flutter_map` and `latlong2` remain in pubspec.yaml but are not used for rendering
@@ -206,6 +213,18 @@ trips/{tripId}
 
 friend_requests/{requestId}
   - fromUid, fromUsername, toUid, status ("pending" | "accepted" | "declined"), createdAt
+
+clubs/{clubId}
+  - name, description, createdBy (uid), adminUids (List<String>), memberUids (List<String>), pinnedPostId (String?), createdAt
+
+clubs/{clubId}/posts/{postId}
+  - authorUid, authorUsername, caption (String?), imageUrl (String?), likedBy (List<String>), likeCount (int), commentCount (int), createdAt, editedAt (DateTime?)
+
+clubs/{clubId}/posts/{postId}/comments/{commentId}
+  - authorUid, authorUsername, text, createdAt, editedAt (DateTime?)
+
+users/{uid}
+  - added clubIds: List<String>
 ```
 
 Note: There is no separate `leaderboard` collection. The leaderboard queries the `trips` collection directly. Marketplace feature was scrapped — no `listings` collection.
@@ -278,6 +297,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - User mini card — `user_mini_card.dart` bottom sheet showing username, car, stats; triggered from leaderboard entry tap; includes Send Friend Request button
 - Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend; `parseTrips` filters `t.smoothnessScore > 0 && t.distance >= 0.5` so unscored/short trips are excluded from avg and best smoothness calculations
 - Friend search — `lib/features/friends/screens/friend_search_screen.dart` — accessible from profile via `person_add_outlined` icon next to FRIENDS header; prefix/partial username search via Firestore range query (`isGreaterThanOrEqualTo` / `isLessThan`), 400ms debounce, limit 20; excludes current user from results; tapping a result opens `user_mini_card.dart` bottom sheet; registered at `/friends/search` in go_router
+- Social clubs — full feature. Create/join/leave/delete clubs (max 50 members). Clubs tab is the middle navbar item (replaced marketplace). Club discovery via search (prefix match) and browse-all (sorted by member count). Per-club feed with posts (text + optional image via image_picker, Firebase Storage at club_posts/{clubId}/{timestamp}.jpg). Posts support: like/unlike (toggleLike batch write), comments (subcollection clubs/{clubId}/posts/{postId}/comments with commentCount maintained via batch), edit caption (author only), delete (author or admin). Admin/owner can pin one post per club (pinnedPostId on club doc, shown above feed with teal pin indicator). CreatePostSheet (`lib/features/clubs/widgets/create_post_sheet.dart`) handles image picker (camera + gallery) and caption. PostCard (`lib/features/clubs/widgets/post_card.dart`) renders feed items with like/comment actions, three-dot menu, relative timestamps, "(edited)" label. CommentsSheet and EditPostSheet are inline widgets inside post_card.dart. Per-club leaderboard tab reuses global leaderboard pattern, batched whereIn queries (chunks of 30), filtered to club members, same time filter toggles. ClubsHubScreen supports embedded mode (no back button when used as navbar tab).
 
 ### Known issues
 - **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
@@ -288,8 +308,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 1. **Leaderboard distance aggregation fix** — ensure total distance shown per user on leaderboard aggregates correctly across all qualifying trips
 2. **Simulator trip guard for coaching** — skip AI coaching call when `distance < 0.5 || duration < 1` alongside the existing sensor check
 3. **Adjust/refine AI coaching prompt** — tune wording and context sent to Claude API
-4. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard filtered by club members. Skip feed/posts
-5. **Polish pass** — custom weather painter illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+4. **Polish pass** — custom weather painter illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -305,3 +324,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Weather and smoothness on the share card follow the same hide conditions as trip detail: hide weather if `weatherLabel.isEmpty`, hide smoothness if `smoothnessScore == 0.0`
 - `flutter analyze` must be clean after every prompt.
 - `lib/config/secrets.dart` is gitignored — never commit it; it contains `anthropicApiKey`
+- Do not modify `club_service.dart`, `post_card.dart`, or `create_post_sheet.dart` unless explicitly discussed.
