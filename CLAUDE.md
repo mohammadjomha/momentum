@@ -276,7 +276,8 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - AI driving coach — `coaching_service.dart` calls Claude API at trip end with trip stats; result stored as `coachingNote` on trip document; lazy generation (generated once, not on re-open); falls back to a static message when sensor data is unavailable; displayed as a card in trip detail below the accel card
 - Friend system — send/accept/decline/remove friends via `friend_service.dart`; `friend_requests` Firestore collection; `friends` array on `users/{uid}`; FriendEntry and FriendRequest models; `friend_provider.dart` Riverpod providers; friends list and pending received requests shown on profile screen; Android notifications for incoming friend requests using SharedPreferences to track notified request IDs
 - User mini card — `user_mini_card.dart` bottom sheet showing username, car, stats; triggered from leaderboard entry tap; includes Send Friend Request button
-- Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend
+- Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend; `parseTrips` filters `t.smoothnessScore > 0 && t.distance >= 0.5` so unscored/short trips are excluded from avg and best smoothness calculations
+- Friend search — `lib/features/friends/screens/friend_search_screen.dart` — accessible from profile via `person_add_outlined` icon next to FRIENDS header; prefix/partial username search via Firestore range query (`isGreaterThanOrEqualTo` / `isLessThan`), 400ms debounce, limit 20; excludes current user from results; tapping a result opens `user_mini_card.dart` bottom sheet; registered at `/friends/search` in go_router
 
 ### Known issues
 - **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
@@ -284,8 +285,11 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - **Push notifications (iOS)** — Android works correctly: system notification fires on app launch for each overdue maintenance entry. iOS notifications are implemented (flutter_local_notifications, permission granted) but delivery is unreliable — notifications only appear when the app is backgrounded shortly after launch due to iOS foreground suppression. No code fix found without Xcode/APNs debugging access. Feature is functional on Android for demo purposes.
 
 ### Remaining (in build order)
-1. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
-2. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+1. **Leaderboard distance aggregation fix** — ensure total distance shown per user on leaderboard aggregates correctly across all qualifying trips
+2. **Simulator trip guard for coaching** — skip AI coaching call when `distance < 0.5 || duration < 1` alongside the existing sensor check
+3. **Adjust/refine AI coaching prompt** — tune wording and context sent to Claude API
+4. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard filtered by club members. Skip feed/posts
+5. **Polish pass** — custom weather painter illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
