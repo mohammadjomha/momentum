@@ -30,12 +30,21 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
 - `lib/features/trip_history/widgets/share_card_painter.dart` — CustomPainter for route normalization and drawing (do not modify drawing logic without discussion)
 - `lib/features/trip_history/widgets/share_trip_card.dart` — 1080×1920 share card widget; weather and smoothness follow the same hide conditions as trip detail (hide if empty/zero)
+- `lib/features/ai_coach/services/coaching_service.dart` — calls Claude API at trip end with trip stats, returns a coaching note string; falls back to a static no-sensor message when sensor data is unavailable; result stored as `coachingNote` (String) on trip document; lazy generation: only called once and cached, not regenerated on re-open
+- `lib/features/friends/services/friend_service.dart` — sends/accepts/declines friend requests, removes friends, streams incoming pending requests; uses `friend_requests` Firestore collection and `friends` array field on `users/{uid}`
+- `lib/features/friends/models/friend_entry.dart` — FriendEntry model (uid, username, carModel)
+- `lib/features/friends/models/friend_request.dart` — FriendRequest model (requestId, fromUid, fromUsername, toUid, status, createdAt)
+- `lib/features/friends/providers/friend_provider.dart` — Riverpod providers for friend list, pending received requests, and send/accept/decline/remove actions
+- `lib/features/leaderboard/widgets/user_mini_card.dart` — bottom sheet showing a user's profile mini-card (username, car, stats); triggered by tapping a leaderboard entry
+- `lib/features/friends/screens/friend_comparison_screen.dart` — side-by-side stat comparison between current user and a friend; route `/friends/compare/:friendUid`
 
 ## Architecture — feature-based structure
 New features go under `lib/features/`:
 
 ```
 lib/
+├── config/
+│   └── secrets.dart          # gitignored — anthropicApiKey constant
 ├── core/
 │   ├── theme/app_theme.dart
 │   └── constants/
@@ -47,6 +56,8 @@ lib/
 │   ├── trip_history/    # Past trips, route map, stats
 │   ├── leaderboard/     # Rankings with time filters
 │   ├── profile/         # User profile, car details, maintenance log
+│   ├── friends/         # Friend system, comparison screen
+│   ├── ai_coach/        # AI driving coach service
 │   └── auth/            # Login, register screens
 └── shared/
     └── widgets/         # Reusable components
@@ -64,6 +75,8 @@ lib/
 - Weather: Open-Meteo API (free, no key required) — fetched at trip end using midpoint GPS coordinate
 - Share: share_plus ^10.1.4 — shares the trip card PNG via native share sheet
 - Temp files: path_provider ^2.1.4 — used to write the share card PNG to a temp directory before sharing
+- AI coach: Anthropic Claude API via `anthropic` Dart SDK — key stored in `lib/config/secrets.dart` (gitignored)
+- Notifications: shared_preferences — used to track which friend-request IDs have already triggered an Android notification, preventing duplicates on app relaunch
 
 ### Map implementation notes
 - `google_maps_flutter` is the active map package — `flutter_map` and `latlong2` remain in pubspec.yaml but are not used for rendering
@@ -125,11 +138,32 @@ lib/
 ### Leaderboard notes
 - Queries `trips` collection directly — no separate leaderboard collection
 - Filters by `date` range based on selected time filter, then groups by uid client-side keeping each user's best trip
-- Ranked by: smoothnessScore desc → distance desc → avgSpeed desc (tiebreakers)
+- Trips shorter than 0.5 km are excluded from leaderboard ranking to filter out accidental/test trips
+- Ranked by: **average smoothnessScore across all qualifying trips** (not best single trip score) → distance → avgSpeed as tiebreakers
+- `allTimeByUid` map maintained separately for All Time filter — leaderboard uses parallel queries and merges results client-side
 - Car model fetched from `users` collection in batches
 - Time filter defaults to This Week
 - Current user's entry highlighted with `AppTheme.accent.withOpacity(0.3)` border
+- Tapping a leaderboard entry opens `user_mini_card.dart` bottom sheet with that user's profile mini-card
 - Requires a composite Firestore index on (date, smoothnessScore, distance, avgSpeed) — Firebase will print a clickable creation link in the debug console on first query run if not yet created
+
+### AI driving coach notes
+- Service: `lib/features/ai_coach/services/coaching_service.dart`
+- Called once at trip end from `tracking_provider.dart` immediately after smoothness score computation
+- Sends: distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel
+- Result stored as `coachingNote` (String) on the trip Firestore document
+- Lazy: if `coachingNote` is already non-empty on a trip document, it is displayed as-is — the API is not called again
+- Fallback: if sensor data is unavailable (peakBrakeG == 0 and peakAccelG == 0), a static informational message is returned instead of calling the API
+- Displayed in trip detail screen as a coaching card below the accel card; hidden when `coachingNote` is empty
+- API key lives in `lib/config/secrets.dart` — this file is gitignored; do not commit it
+
+### Friend system notes
+- `friend_service.dart` — `sendRequest(toUid)`, `acceptRequest(requestId)`, `declineRequest(requestId)`, `removeFriend(friendUid)`, `streamPendingReceived()`, `streamFriends()`
+- Friend requests stored in `friend_requests/{requestId}` with fields: fromUid, fromUsername, toUid, status, createdAt
+- Accepted friends stored as a `friends: [uid, ...]` array on each user's `users/{uid}` document (both sides updated atomically)
+- Android notification fires for each new incoming friend request; SharedPreferences key `notified_request_ids` (Set\<String\>) prevents duplicate notifications across app restarts
+- `user_mini_card.dart` bottom sheet: shows username, car make/model/year, total trips, total distance, and a Send Friend Request button (button hidden if already friends or request already sent)
+- Friend comparison screen at `/friends/compare/:friendUid`: fetches both users' trip stats from Firestore and renders a side-by-side card layout using the design system colors
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
@@ -152,6 +186,7 @@ lib/
 users/{uid}
   - username, email, totalDistance, totalTrips, createdAt
   - car: { make, model, year, trim (optional), notes (optional) }
+  - friends: [ uid, ... ]  ← array of accepted friend UIDs
 
 users/{uid}/maintenance/{entryId}
   - type (String — e.g. "Oil Change", "General Checkup", "Yearly Inspection")
@@ -167,6 +202,10 @@ trips/{tripId}
   - hardAccelCount, peakAccelG, avgAccelG
   - weatherCode (int), weatherLabel (String), weatherTempC (double), weatherMultiplier (double)
   - smoothnessScore (double, 0–100)
+  - coachingNote (String) — AI driving coach feedback, generated lazily at trip end
+
+friend_requests/{requestId}
+  - fromUid, fromUsername, toUid, status ("pending" | "accepted" | "declined"), createdAt
 ```
 
 Note: There is no separate `leaderboard` collection. The leaderboard queries the `trips` collection directly. Marketplace feature was scrapped — no `listings` collection.
@@ -177,6 +216,7 @@ Note: There is no separate `leaderboard` collection. The leaderboard queries the
 - NHTSA service: `lib/features/profile/services/nhtsa_service.dart` — fetches makes and models from the NHTSA public API
 - Reads/writes to Firestore `users/{uid}` and `users/{uid}.car`
 - Stat tiles on profile: total trips + total distance (read-only, from Firestore)
+- Friends section on profile screen: shows accepted friends list and pending received friend requests; accept/decline actions inline
 - Sign out button on profile screen
 
 ### Firebase rules
@@ -230,9 +270,13 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Cleanup — cornering removed from all models, services, and UI; debug panel removed from tracking screen
 - Weather on trips — Open-Meteo fetch at trip end, stored on trip document, displayed as card in trip detail
 - Smoothness score — computed at trip end, stored on trip document, displayed as card in trip detail
-- Leaderboard — time filter toggle, queries trips directly, grouped by uid, ranked by smoothness score
+- Leaderboard — time filter toggle, queries trips directly, grouped by uid, ranked by avg smoothness score across all qualifying trips (≥0.5 km); parallel queries for All Time; tapping entry opens user mini-card bottom sheet
 - Maintenance log — section on profile screen, Firestore subcollection, add/edit/delete with undo snackbar, overdue/due-soon color coding
 - Share Trip — RepaintBoundary + RenderRepaintBoundary.toImage() pipeline captures a 1080×1920 PNG off-screen. Card layout: route polyline (teal, no map base layer) in left column (65% width), four stats stacked vertically in right column (35% width), weather + smoothness side by side below, branding strip (@username + Momentum) at bottom. Shared via share_plus. Button in trip detail screen after accel card. NSPhotoLibraryAddUsageDescription added to ios/Runner/Info.plist for iOS save-to-gallery support.
+- AI driving coach — `coaching_service.dart` calls Claude API at trip end with trip stats; result stored as `coachingNote` on trip document; lazy generation (generated once, not on re-open); falls back to a static message when sensor data is unavailable; displayed as a card in trip detail below the accel card
+- Friend system — send/accept/decline/remove friends via `friend_service.dart`; `friend_requests` Firestore collection; `friends` array on `users/{uid}`; FriendEntry and FriendRequest models; `friend_provider.dart` Riverpod providers; friends list and pending received requests shown on profile screen; Android notifications for incoming friend requests using SharedPreferences to track notified request IDs
+- User mini card — `user_mini_card.dart` bottom sheet showing username, car, stats; triggered from leaderboard entry tap; includes Send Friend Request button
+- Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend
 
 ### Known issues
 - **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
@@ -240,9 +284,8 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - **Push notifications (iOS)** — Android works correctly: system notification fires on app launch for each overdue maintenance entry. iOS notifications are implemented (flutter_local_notifications, permission granted) but delivery is unreliable — notifications only appear when the app is backgrounded shortly after launch due to iOS foreground suppression. No code fix found without Xcode/APNs debugging access. Feature is functional on Android for demo purposes.
 
 ### Remaining (in build order)
-1. **AI driving coach** — automatic Claude API call at trip end, sends trip stats (distance, duration, maxSpeed, avgSpeed, smoothnessScore, peakBrakeG, avgBrakeG, peakAccelG, weatherLabel), stores result as `coachingNote` (String) on trip document, displayed as a card in trip detail below the accel card
-2. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
-3. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+1. **Social clubs** (if time allows) — minimum viable: create club, join club, per-club leaderboard. Skip feed/posts
+2. **Polish pass** — custom painter weather illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -257,3 +300,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Do not modify `share_card_painter.dart` drawing logic without discussion
 - Weather and smoothness on the share card follow the same hide conditions as trip detail: hide weather if `weatherLabel.isEmpty`, hide smoothness if `smoothnessScore == 0.0`
 - `flutter analyze` must be clean after every prompt.
+- `lib/config/secrets.dart` is gitignored — never commit it; it contains `anthropicApiKey`

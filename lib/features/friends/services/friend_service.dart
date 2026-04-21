@@ -2,6 +2,34 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum RelationshipStatus { none, pendingSent, pendingReceived, friends }
 
+class FriendEntry {
+  final String uid;
+  final String username;
+  final String carMake;
+  final String carModel;
+
+  const FriendEntry({
+    required this.uid,
+    required this.username,
+    required this.carMake,
+    required this.carModel,
+  });
+}
+
+class FriendRequest {
+  final String requestId;
+  final String fromUid;
+  final String fromUsername;
+  final DateTime createdAt;
+
+  const FriendRequest({
+    required this.requestId,
+    required this.fromUid,
+    required this.fromUsername,
+    required this.createdAt,
+  });
+}
+
 class FriendService {
   final _db = FirebaseFirestore.instance;
 
@@ -11,6 +39,17 @@ class FriendService {
     required String toUid,
     required String toUsername,
   }) async {
+    // Resolve fromUsername from Firestore if the caller passed an empty value
+    String resolvedFromUsername = fromUsername.trim();
+    if (resolvedFromUsername.isEmpty) {
+      final userDoc = await _db.collection('users').doc(fromUid).get();
+      resolvedFromUsername =
+          (userDoc.data()?['username'] as String?)?.trim() ?? '';
+      if (resolvedFromUsername.isEmpty) {
+        throw Exception('Could not resolve fromUsername for uid: $fromUid');
+      }
+    }
+
     // Check for any non-rejected request between these two users
     final existing = await _db
         .collection('friend_requests')
@@ -30,7 +69,7 @@ class FriendService {
 
     await _db.collection('friend_requests').add({
       'fromUid': fromUid,
-      'fromUsername': fromUsername,
+      'fromUsername': resolvedFromUsername,
       'toUid': toUid,
       'toUsername': toUsername,
       'status': 'pending',
@@ -104,6 +143,51 @@ class FriendService {
     await _db.collection('friend_requests').doc(requestId).update({
       'status': 'rejected',
     });
+  }
+
+  Stream<List<FriendEntry>> getFriends(String uid) {
+    return _db
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .asyncMap((snap) async {
+      final friends = List<String>.from(snap.data()?['friends'] ?? []);
+      if (friends.isEmpty) return <FriendEntry>[];
+
+      final futures = friends.map((fUid) async {
+        final doc = await _db.collection('users').doc(fUid).get();
+        final data = doc.data() ?? {};
+        final car = data['car'] as Map<String, dynamic>? ?? {};
+        return FriendEntry(
+          uid: fUid,
+          username: (data['username'] as String?) ?? fUid,
+          carMake: (car['make'] as String?) ?? '',
+          carModel: (car['model'] as String?) ?? '',
+        );
+      });
+      return Future.wait(futures);
+    });
+  }
+
+  Stream<List<FriendRequest>> getPendingReceived(String uid) {
+    return _db
+        .collection('friend_requests')
+        .where('toUid', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .snapshots()
+        .map((snap) => snap.docs.map((doc) {
+              final data = doc.data();
+              final ts = data['createdAt'];
+              final createdAt = ts is Timestamp
+                  ? ts.toDate()
+                  : DateTime.now();
+              return FriendRequest(
+                requestId: doc.id,
+                fromUid: (data['fromUid'] as String?) ?? '',
+                fromUsername: (data['fromUsername'] as String?) ?? '',
+                createdAt: createdAt,
+              );
+            }).toList());
   }
 }
 

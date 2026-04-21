@@ -9,6 +9,7 @@ import 'core/theme/app_theme.dart';
 import 'data/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
+import 'features/friends/screens/friend_comparison_screen.dart';
 import 'features/home/screens/home_screen.dart';
 import 'firebase_options.dart';
 
@@ -19,6 +20,7 @@ class _AuthStateListenable extends ChangeNotifier {
     FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user != null) {
         NotificationService.checkAndNotifyOverdueMaintenance(user.uid);
+        NotificationService.checkAndNotifyFriendRequests(user.uid);
       }
       notifyListeners();
     });
@@ -59,6 +61,12 @@ void main() async {
       GoRoute(
         path: '/home',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/friends/compare/:friendUid',
+        builder: (context, state) => FriendComparisonScreen(
+          friendUid: state.pathParameters['friendUid']!,
+        ),
       ),
     ],
   );

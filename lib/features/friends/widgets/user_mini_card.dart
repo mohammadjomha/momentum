@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../services/friend_service.dart';
+import '../../profile/providers/profile_provider.dart';
 
 Future<void> showUserMiniCard(
   BuildContext context,
@@ -88,9 +89,11 @@ class _UserMiniCardState extends ConsumerState<_UserMiniCard> {
   Future<void> _sendRequest() async {
     setState(() => _actionLoading = true);
     try {
+      final profile = ref.read(userProfileProvider).valueOrNull;
+      final fromUsername = profile?.username ?? '';
       await friendService.sendFriendRequest(
         fromUid: widget.currentUid,
-        fromUsername: '',
+        fromUsername: fromUsername,
         toUid: widget.targetUid,
         toUsername: widget.username,
       );

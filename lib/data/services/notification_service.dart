@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
@@ -27,16 +28,23 @@ class NotificationService {
     }
 
     if (!kIsWeb && Platform.isAndroid) {
-      await _plugin
+      final androidImpl = _plugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              'momentum_maintenance',
-              'Maintenance Reminders',
-              importance: Importance.high,
-            ),
-          );
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'momentum_maintenance',
+          'Maintenance Reminders',
+          importance: Importance.high,
+        ),
+      );
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          'momentum_friends',
+          'Friend Requests',
+          importance: Importance.high,
+        ),
+      );
     }
   }
 
@@ -82,6 +90,53 @@ class NotificationService {
           ),
         ),
       );
+    }
+  }
+
+  static Future<void> checkAndNotifyFriendRequests(String uid) async {
+    if (kIsWeb || !Platform.isAndroid) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final notifiedKey = 'notified_friend_requests';
+    final alreadyNotified =
+        Set<String>.from(prefs.getStringList(notifiedKey) ?? []);
+
+    final snap = await FirebaseFirestore.instance
+        .collection('friend_requests')
+        .where('toUid', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .get();
+
+    final newIds = <String>[];
+    for (final doc in snap.docs) {
+      final requestId = doc.id;
+      if (alreadyNotified.contains(requestId)) continue;
+
+      final fromUsername =
+          (doc.data()['fromUsername'] as String?) ?? 'Someone';
+
+      // Stable notification ID: truncated hash of requestId
+      final notifId = requestId.hashCode.abs() % 100000 + 10000;
+
+      await _plugin.show(
+        notifId,
+        'Friend Request',
+        '$fromUsername wants to be your driving buddy',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'momentum_friends',
+            'Friend Requests',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+      );
+      newIds.add(requestId);
+    }
+
+    if (newIds.isNotEmpty) {
+      alreadyNotified.addAll(newIds);
+      await prefs.setStringList(notifiedKey, alreadyNotified.toList());
     }
   }
 }

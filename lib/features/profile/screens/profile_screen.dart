@@ -1,9 +1,12 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/services/auth_service.dart';
+import '../../../features/friends/providers/friend_provider.dart';
+import '../../../features/friends/services/friend_service.dart';
 import '../models/maintenance_entry.dart';
 import '../providers/maintenance_provider.dart';
 import '../providers/profile_provider.dart';
@@ -219,6 +222,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: _buildMaintenanceSection(),
           ),
         ),
+        SliverToBoxAdapter(child: _buildPendingRequestsSection()),
+        SliverToBoxAdapter(child: _buildFriendsSection()),
         SliverToBoxAdapter(child: _buildSignOutButton()),
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
@@ -802,6 +807,103 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Pending friend requests
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPendingRequestsSection() {
+    final async = ref.watch(pendingReceivedProvider);
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, st) => const SizedBox.shrink(),
+      data: (requests) {
+        if (requests.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 32, 20, 8),
+              child: _buildSectionLabel('FRIEND REQUESTS'),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: requests
+                    .map((r) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _FriendRequestCard(request: r),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Friends list
+  // ---------------------------------------------------------------------------
+
+  Widget _buildFriendsSection() {
+    final async = ref.watch(friendsProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 32, 20, 8),
+          child: Text(
+            'FRIENDS',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: async.when(
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: CircularProgressIndicator(color: AppTheme.accent),
+              ),
+            ),
+            error: (e, st) => const Text(
+              'Failed to load friends.',
+              style: TextStyle(color: AppTheme.speedRed, fontSize: 13),
+            ),
+            data: (friends) {
+              if (friends.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    'No friends yet. Find drivers on the leaderboard.',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                  ),
+                );
+              }
+              return Column(
+                children: friends
+                    .map((f) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _FriendCard(entry: f),
+                        ))
+                    .toList(),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Sign out
   // ---------------------------------------------------------------------------
 
@@ -1273,6 +1375,169 @@ class _MaintenanceCard extends StatelessWidget {
               ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Friend request card
+// =============================================================================
+
+class _FriendRequestCard extends ConsumerWidget {
+  final FriendRequest request;
+
+  const _FriendRequestCard({required this.request});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.15)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              request.fromUsername,
+              style: const TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () async {
+              await friendService.rejectRequest(request.requestId);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Reject', style: TextStyle(fontSize: 13)),
+          ),
+          const SizedBox(width: 4),
+          ElevatedButton(
+            onPressed: () async {
+              await friendService.acceptRequest(
+                request.requestId,
+                request.fromUid,
+                FirebaseAuth.instance.currentUser!.uid,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+              foregroundColor: AppTheme.background,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Accept',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Friend card
+// =============================================================================
+
+class _FriendCard extends StatelessWidget {
+  final FriendEntry entry;
+
+  const _FriendCard({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final carLine = [entry.carMake, entry.carModel]
+        .where((s) => s.isNotEmpty)
+        .join(' ');
+    return GestureDetector(
+      onTap: () => context.push('/friends/compare/${entry.uid}'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.accent.withValues(alpha: 0.15)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppTheme.accent.withValues(alpha: 0.35),
+                  width: 1.5,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  entry.username.isNotEmpty
+                      ? entry.username[0].toUpperCase()
+                      : '?',
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.username,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (carLine.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      carLine,
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: AppTheme.textSecondary,
+              size: 20,
+            ),
+          ],
         ),
       ),
     );
