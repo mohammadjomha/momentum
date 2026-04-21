@@ -9,6 +9,9 @@ import 'core/theme/app_theme.dart';
 import 'data/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
+import 'features/clubs/screens/club_detail_screen.dart';
+import 'features/clubs/screens/clubs_hub_screen.dart';
+import 'features/clubs/screens/create_club_screen.dart';
 import 'features/friends/screens/friend_comparison_screen.dart';
 import 'features/friends/screens/friend_search_screen.dart';
 import 'features/home/screens/home_screen.dart';
@@ -72,6 +75,20 @@ void main() async {
       GoRoute(
         path: '/friends/search',
         builder: (context, state) => const FriendSearchScreen(),
+      ),
+      GoRoute(
+        path: '/clubs',
+        builder: (context, state) => const ClubsHubScreen(),
+      ),
+      GoRoute(
+        path: '/clubs/create',
+        builder: (context, state) => const CreateClubScreen(),
+      ),
+      GoRoute(
+        path: '/clubs/:clubId',
+        builder: (context, state) => ClubDetailScreen(
+          clubId: state.pathParameters['clubId']!,
+        ),
       ),
     ],
   );

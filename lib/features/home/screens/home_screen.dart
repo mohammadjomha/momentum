@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../clubs/screens/clubs_hub_screen.dart';
 import '../../leaderboard/screens/leaderboard_screen.dart';
 import '../../profile/screens/profile_screen.dart';
 import '../../tracking/screens/tracking_screen.dart';
@@ -19,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _tabs = [
     _TabItem(label: 'Track', icon: Icons.speed_rounded),
     _TabItem(label: 'History', icon: Icons.history_rounded),
-    _TabItem(label: 'Market', icon: Icons.storefront_outlined),
+    _TabItem(label: 'Clubs', icon: Icons.groups_outlined, selectedIcon: Icons.groups),
     _TabItem(label: 'Ranks', icon: Icons.leaderboard_outlined),
     _TabItem(label: 'Profile', icon: Icons.person_outline_rounded),
   ];
@@ -33,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case 4:
         return const ProfileScreen();
       case 2:
-        return const _PlaceholderPage(title: 'Marketplace');
+        return const ClubsHubScreen(embedded: true);
       case 3:
         return const LeaderboardScreen();
       default:
@@ -84,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              tab.icon,
+              isSelected ? (tab.selectedIcon ?? tab.icon) : tab.icon,
               size: 22,
               color: isSelected ? AppTheme.accent : AppTheme.textSecondary,
             ),
@@ -118,7 +119,8 @@ class _HomeScreenState extends State<HomeScreen> {
 class _TabItem {
   final String label;
   final IconData icon;
-  const _TabItem({required this.label, required this.icon});
+  final IconData? selectedIcon;
+  const _TabItem({required this.label, required this.icon, this.selectedIcon});
 }
 
 class _PlaceholderPage extends StatelessWidget {

@@ -224,6 +224,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         SliverToBoxAdapter(child: _buildPendingRequestsSection()),
         SliverToBoxAdapter(child: _buildFriendsSection()),
+        SliverToBoxAdapter(child: _buildClubsRow()),
         SliverToBoxAdapter(child: _buildSignOutButton()),
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
@@ -915,6 +916,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Clubs row
+  // ---------------------------------------------------------------------------
+
+  Widget _buildClubsRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      child: GestureDetector(
+        onTap: () => context.push('/clubs'),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: AppTheme.accent.withValues(alpha: 0.15),
+            ),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.group_rounded,
+                  color: AppTheme.accent, size: 20),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'CLUBS',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  color: AppTheme.textSecondary, size: 20),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
