@@ -20,10 +20,7 @@ class TripHistoryService {
     }
   }
 
-  Stream<List<TripModel>> tripsStream() {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return const Stream.empty();
-
+  Stream<List<TripModel>> tripsStream(String uid) {
     return _db
         .collection('trips')
         .where('uid', isEqualTo: uid)

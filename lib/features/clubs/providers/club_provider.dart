@@ -1,6 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../models/club.dart';
 import '../models/club_comment.dart';
 import '../models/club_post.dart';
@@ -8,8 +8,8 @@ import '../services/club_service.dart';
 
 // My clubs
 final userClubsProvider = StreamProvider<List<Club>>((ref) {
-  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-  if (uid.isEmpty) return const Stream.empty();
+  final uid = ref.watch(authStateProvider).value?.uid;
+  if (uid == null) return const Stream.empty();
   return clubService.streamUserClubs(uid);
 });
 

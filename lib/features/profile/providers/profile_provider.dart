@@ -1,7 +1,8 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../services/nhtsa_service.dart';
 
 // ---------------------------------------------------------------------------
@@ -57,7 +58,7 @@ final _nhtsaService = NhtsaService();
 
 /// Streams the current user's Firestore document.
 final userProfileProvider = StreamProvider<UserProfile?>((ref) {
-  final uid = _auth.currentUser?.uid;
+  final uid = ref.watch(authStateProvider).valueOrNull?.uid;
   if (uid == null) return Stream.value(null);
   return _firestore.collection('users').doc(uid).snapshots().map((snap) {
     if (!snap.exists) return null;
@@ -74,7 +75,7 @@ enum NhtsaLoadState { idle, loading, loaded, error }
 class NhtsaMakesState {
   final NhtsaLoadState loadState;
   final List<String> items;
-  final bool fallback; // true → show plain text field
+  final bool fallback; // true â†’ show plain text field
 
   const NhtsaMakesState({
     this.loadState = NhtsaLoadState.idle,

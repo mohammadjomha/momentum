@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../features/auth/services/auth_service.dart';
+import '../../../features/clubs/providers/club_provider.dart';
 import '../../../features/friends/providers/friend_provider.dart';
 import '../../../features/friends/services/friend_service.dart';
+import '../../../features/trip_history/providers/trip_history_provider.dart';
 import '../models/maintenance_entry.dart';
 import '../providers/maintenance_provider.dart';
 import '../providers/profile_provider.dart';
@@ -51,6 +54,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   // Whether profile has been pre-populated from Firestore
   bool _hydrated = false;
+  String? _lastUid;
 
   @override
   void initState() {
@@ -69,6 +73,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _makeFallbackController.dispose();
     _modelFallbackController.dispose();
     super.dispose();
+  }
+
+  void _resetHydration() {
+    _hydrated = false;
+    _lastUid = null;
+    _selectedMake = null;
+    _selectedModel = null;
+    _selectedYear = null;
+    _usernameController.clear();
+    _trimController.clear();
+    _notesController.clear();
+    _makeFallbackController.clear();
+    _modelFallbackController.clear();
   }
 
   // Pre-populate fields once Firestore data arrives (only the first time)
@@ -92,7 +109,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             .read(nhtsaModelsProvider.notifier)
             .loadForMake(profile.carMake!)
             .then((_) {
-          if (mounted && profile.carModel != null) {
+          if (mounted) {
             setState(() => _selectedModel = profile.carModel);
           }
         });
@@ -139,11 +156,35 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _signOut() async {
     await AuthService().signOut();
+    ref.invalidate(userProfileProvider);
+    ref.invalidate(maintenanceProvider);
+    ref.invalidate(friendsProvider);
+    ref.invalidate(pendingReceivedProvider);
+    ref.invalidate(tripHistoryProvider);
+    ref.invalidate(userClubsProvider);
     if (mounted) context.go('/login');
   }
 
   @override
   Widget build(BuildContext context) {
+    // Reset hydration whenever the signed-in user changes so User B's
+    // profile screen doesn't inherit User A's pre-populated form state.
+    ref.listen(authStateProvider, (_, next) {
+      final uid = next.valueOrNull?.uid;
+      if (uid != _lastUid) {
+        setState(_resetHydration);
+        _lastUid = uid;
+      }
+    });
+
+    // Hydrate form fields when profile data arrives. Must be in ref.listen
+    // (not inside when(data:)) so loadForMake() fires post-build, never
+    // during a build phase.
+    ref.listen(userProfileProvider, (_, next) {
+      final profile = next.valueOrNull;
+      if (profile != null) _hydrateIfNeeded(profile);
+    });
+
     final profileAsync = ref.watch(userProfileProvider);
 
     return Scaffold(
@@ -159,10 +200,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               style: const TextStyle(color: AppTheme.speedRed),
             ),
           ),
-          data: (profile) {
-            if (profile != null) _hydrateIfNeeded(profile);
-            return _buildBody(profile);
-          },
+          data: (profile) => _buildBody(profile),
         ),
       ),
     );

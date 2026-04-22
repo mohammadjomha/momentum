@@ -18,29 +18,31 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/tracking/widgets/stat_card.dart` — stat display cards
 - `lib/features/tracking/widgets/gps_status_indicator.dart` — yellow pill indicator shown when GPS speed reading is invalid
 - `lib/features/tracking/providers/tracking_provider.dart` — Riverpod provider for tracking state, exposes gpsWeak from lastReadingInvalid, owns the sole SensorService instance, runs weather fetch and smoothness score computation at trip end
-- `lib/core/theme/app_theme.dart` — app theme
+- `lib/core/theme/app_theme.dart` — app theme; snackBarTheme set globally: backgroundColor surfaceHigh, contentTextStyle white, actionTextColor accent, floating behavior, 8px rounded corners
+- `lib/core/providers/auth_provider.dart` — single `authStateProvider` (StreamProvider<User?>) streaming `FirebaseAuth.instance.authStateChanges()`; all per-user providers must `ref.watch(authStateProvider)` — never read `currentUser?.uid` synchronously
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, smoothness/weather/braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (field: `hardBrakeCount`); accel card label reads "Quick Accels" (field: `hardAccelCount`); card order: map → stats → smoothness → weather → braking → accel
 - `lib/features/leaderboard/screens/leaderboard_screen.dart` — leaderboard screen, queries trips directly, groups by uid client-side, time filter toggle (Today / This Week / This Month / All Time), ranked by smoothnessScore → distance → avgSpeed, current user highlighted with teal border
 - `lib/features/leaderboard/providers/leaderboard_provider.dart` — StateNotifierProvider holding selected time filter and fetched entries
-- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out
+- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out; tracks `_lastUid` and calls `_resetHydration()` via `ref.listen(authStateProvider)` when uid changes; `_hydrateIfNeeded()` triggered from `ref.listen(userProfileProvider)` in `build()` (not inside `when(data:)`) to avoid illegal provider mutation during build; `_signOut()` calls `ref.invalidate()` on all six per-user providers as a safety net
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
-- `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state
+- `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state; `userProfileProvider` watches `authStateProvider` via `.valueOrNull?.uid` to prevent AsyncLoading propagation
 - `lib/features/profile/models/maintenance_entry.dart` — MaintenanceEntry model with toMap()/fromDoc()
-- `lib/features/profile/providers/maintenance_provider.dart` — StateNotifierProvider streaming maintenance entries; addEntry/updateEntry/deleteEntry
+- `lib/features/profile/providers/maintenance_provider.dart` — StateNotifierProvider streaming maintenance entries; addEntry/updateEntry/deleteEntry; `MaintenanceNotifier` holds `StreamSubscription? _sub`, uses `resubscribe(String? uid)` driven by `ref.listen(authStateProvider)` with `fireImmediately: true`, cancels subscription in `dispose()` — no listener leak
 - `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
 - `lib/features/trip_history/widgets/share_card_painter.dart` — CustomPainter for route normalization and drawing (do not modify drawing logic without discussion)
 - `lib/features/trip_history/widgets/share_trip_card.dart` — 1080×1920 share card widget; weather and smoothness follow the same hide conditions as trip detail (hide if empty/zero)
 - `lib/features/clubs/services/club_service.dart` — all club, post, comment, like, pin logic
-- `lib/features/clubs/providers/club_provider.dart` — userClubsProvider, allClubsProvider, clubDetailProvider, clubPostsProvider, clubCommentsProvider
+- `lib/features/clubs/providers/club_provider.dart` — userClubsProvider, allClubsProvider, clubDetailProvider, clubPostsProvider, clubCommentsProvider; `userClubsProvider` watches `authStateProvider`
 - `lib/features/clubs/widgets/post_card.dart` — feed post card, CommentsSheet, EditPostSheet
 - `lib/features/clubs/widgets/create_post_sheet.dart` — new post bottom sheet (image + caption)
 - `lib/features/clubs/screens/clubs_hub_screen.dart` — MY CLUBS + DISCOVER tabs, embedded mode
 - `lib/features/clubs/screens/club_detail_screen.dart` — feed + leaderboard tabs, pin, join/leave/delete
 - `lib/features/ai_coach/services/coaching_service.dart` — calls Claude API at trip end with trip stats, returns a coaching note string; falls back to a static no-sensor message when sensor data is unavailable; result stored as `coachingNote` (String) on trip document; lazy generation: only called once and cached, not regenerated on re-open
+- `lib/features/trip_history/providers/trip_history_provider.dart` — StreamProvider watching `authStateProvider`; passes uid explicitly to `TripHistoryService.tripsStream(uid)`
 - `lib/features/friends/services/friend_service.dart` — sends/accepts/declines friend requests, removes friends, streams incoming pending requests; uses `friend_requests` Firestore collection and `friends` array field on `users/{uid}`
 - `lib/features/friends/models/friend_entry.dart` — FriendEntry model (uid, username, carModel)
 - `lib/features/friends/models/friend_request.dart` — FriendRequest model (requestId, fromUid, fromUsername, toUid, status, createdAt)
-- `lib/features/friends/providers/friend_provider.dart` — Riverpod providers for friend list, pending received requests, and send/accept/decline/remove actions
+- `lib/features/friends/providers/friend_provider.dart` — Riverpod providers for friend list, pending received requests, and send/accept/decline/remove actions; both StreamProviders watch `authStateProvider`
 - `lib/features/leaderboard/widgets/user_mini_card.dart` — bottom sheet showing a user's profile mini-card (username, car, stats); triggered by tapping a leaderboard entry
 - `lib/features/friends/screens/friend_comparison_screen.dart` — side-by-side stat comparison between current user and a friend; route `/friends/compare/:friendUid`
 
@@ -53,6 +55,7 @@ lib/
 │   └── secrets.dart          # gitignored — anthropicApiKey constant
 ├── core/
 │   ├── theme/app_theme.dart
+│   ├── providers/auth_provider.dart
 │   └── constants/
 ├── data/
 │   ├── models/
@@ -84,6 +87,7 @@ lib/
 - AI coach: Anthropic Claude API via `anthropic` Dart SDK — key stored in `lib/config/secrets.dart` (gitignored)
 - Notifications: shared_preferences — used to track which friend-request IDs have already triggered an Android notification, preventing duplicates on app relaunch
 - Image picker: image_picker ^1.1.2 — used in CreatePostSheet for camera and gallery image selection
+- Launcher icons: flutter_launcher_icons ^0.14.1 (dev) — generates Android adaptive icons and iOS icons from `assets/images/launcher_icon.png`
 
 ### Map implementation notes
 - `google_maps_flutter` is the active map package — `flutter_map` and `latlong2` remain in pubspec.yaml but are not used for rendering
@@ -171,6 +175,15 @@ lib/
 - Android notification fires for each new incoming friend request; SharedPreferences key `notified_request_ids` (Set\<String\>) prevents duplicate notifications across app restarts
 - `user_mini_card.dart` bottom sheet: shows username, car make/model/year, total trips, total distance, and a Send Friend Request button (button hidden if already friends or request already sent)
 - Friend comparison screen at `/friends/compare/:friendUid`: fetches both users' trip stats from Firestore and renders a side-by-side card layout using the design system colors
+
+### Launcher icons notes
+- Source image: `assets/images/launcher_icon.png` — square PNG, should have transparent or dark background
+- Foreground layer for Android adaptive icons: `assets/images/launcher_icon_foreground.png`
+- Adaptive icon background color: `#0D0D0D` (matches `AppTheme.background`)
+- `min_sdk_android: 21` — adaptive icons generated for API 26+; legacy mipmaps generated for API 21–25
+- Generated files: `android/app/src/main/res/mipmap-*/launcher_icon.png` + `mipmap-anydpi-v26/launcher_icon.xml`; iOS `Runner/Assets.xcassets/AppIcon.appiconset/`
+- To regenerate after changing the source image: `dart run flutter_launcher_icons`
+- Android launch theme (`LaunchTheme`) uses a plain `#0D0D0D` `launch_background` drawable (no splash image) — flutter_native_splash remnants were fully removed; do not re-add `windowSplashScreenAnimatedIcon` or `@drawable/splash` references
 
 ### Google Maps API key injection
 - **Android (local):** Add `GOOGLE_MAPS_API_KEY=<key>` to `android/local.properties` (gitignored). `build.gradle.kts` loads `local.properties` via `java.util.Properties` and injects via `manifestPlaceholders`.
@@ -297,6 +310,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - User mini card — `user_mini_card.dart` bottom sheet showing username, car, stats; triggered from leaderboard entry tap; includes Send Friend Request button
 - Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend; `parseTrips` filters `t.smoothnessScore > 0 && t.distance >= 0.5` so unscored/short trips are excluded from avg and best smoothness calculations
 - Friend search — `lib/features/friends/screens/friend_search_screen.dart` — accessible from profile via `person_add_outlined` icon next to FRIENDS header; prefix/partial username search via Firestore range query (`isGreaterThanOrEqualTo` / `isLessThan`), 400ms debounce, limit 20; excludes current user from results; tapping a result opens `user_mini_card.dart` bottom sheet; registered at `/friends/search` in go_router
+- Launcher icons — `flutter_launcher_icons` generates Android adaptive icons (`#0D0D0D` background + foreground layer) and iOS icons from `assets/images/launcher_icon.png`; Android launch theme shows plain dark background while Flutter engine initialises (no splash image)
 - Social clubs — full feature. Create/join/leave/delete clubs (max 50 members). Clubs tab is the middle navbar item (replaced marketplace). Club discovery via search (prefix match) and browse-all (sorted by member count). Per-club feed with posts (text + optional image via image_picker, Firebase Storage at club_posts/{clubId}/{timestamp}.jpg). Posts support: like/unlike (toggleLike batch write), comments (subcollection clubs/{clubId}/posts/{postId}/comments with commentCount maintained via batch), edit caption (author only), delete (author or admin). Admin/owner can pin one post per club (pinnedPostId on club doc, shown above feed with teal pin indicator). CreatePostSheet (`lib/features/clubs/widgets/create_post_sheet.dart`) handles image picker (camera + gallery) and caption. PostCard (`lib/features/clubs/widgets/post_card.dart`) renders feed items with like/comment actions, three-dot menu, relative timestamps, "(edited)" label. CommentsSheet and EditPostSheet are inline widgets inside post_card.dart. Per-club leaderboard tab reuses global leaderboard pattern, batched whereIn queries (chunks of 30), filtered to club members, same time filter toggles. ClubsHubScreen supports embedded mode (no back button when used as navbar tab).
 
 ### Known issues
@@ -325,3 +339,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - `flutter analyze` must be clean after every prompt.
 - `lib/config/secrets.dart` is gitignored — never commit it; it contains `anthropicApiKey`
 - Do not modify `club_service.dart`, `post_card.dart`, or `create_post_sheet.dart` unless explicitly discussed.
+- All per-user Riverpod providers must `ref.watch(authStateProvider)` from `lib/core/providers/auth_provider.dart` — never call `FirebaseAuth.instance.currentUser?.uid` synchronously inside a provider build function.

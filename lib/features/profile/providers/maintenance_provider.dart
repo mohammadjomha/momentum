@@ -1,24 +1,29 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../models/maintenance_entry.dart';
 
 final _firestore = FirebaseFirestore.instance;
-final _auth = FirebaseAuth.instance;
 
 class MaintenanceNotifier extends StateNotifier<AsyncValue<List<MaintenanceEntry>>> {
-  MaintenanceNotifier() : super(const AsyncValue.loading()) {
-    _subscribe();
-  }
+  StreamSubscription<QuerySnapshot>? _sub;
+  String? _uid;
 
-  void _subscribe() {
-    final uid = _auth.currentUser?.uid;
+  MaintenanceNotifier() : super(const AsyncValue.loading());
+
+  void resubscribe(String? uid) {
+    if (uid == _uid) return;
+    _uid = uid;
+    _sub?.cancel();
     if (uid == null) {
       state = const AsyncValue.data([]);
       return;
     }
-    _firestore
+    _sub = _firestore
         .collection('users')
         .doc(uid)
         .collection('maintenance')
@@ -35,35 +40,37 @@ class MaintenanceNotifier extends StateNotifier<AsyncValue<List<MaintenanceEntry
         );
   }
 
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
   Future<void> addEntry(MaintenanceEntry entry) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    if (_uid == null) return;
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(_uid)
         .collection('maintenance')
         .add(entry.toMap());
   }
 
   Future<void> updateEntry(MaintenanceEntry entry) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
-
+    if (_uid == null) return;
     final update = entry.toMap()..remove('createdAt');
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(_uid)
         .collection('maintenance')
         .doc(entry.entryId)
         .update(update);
   }
 
   Future<void> deleteEntry(String entryId) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    if (_uid == null) return;
     await _firestore
         .collection('users')
-        .doc(uid)
+        .doc(_uid)
         .collection('maintenance')
         .doc(entryId)
         .delete();
@@ -71,6 +78,13 @@ class MaintenanceNotifier extends StateNotifier<AsyncValue<List<MaintenanceEntry
 }
 
 final maintenanceProvider = StateNotifierProvider<MaintenanceNotifier,
-    AsyncValue<List<MaintenanceEntry>>>(
-  (ref) => MaintenanceNotifier(),
-);
+    AsyncValue<List<MaintenanceEntry>>>((ref) {
+  final notifier = MaintenanceNotifier();
+  // Drive the subscription from authStateProvider so it rebuilds on user change.
+  ref.listen<AsyncValue<User?>>(
+    authStateProvider,
+    (_, next) => notifier.resubscribe(next.value?.uid),
+    fireImmediately: true,
+  );
+  return notifier;
+});

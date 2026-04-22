@@ -82,6 +82,13 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
       ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: surfaceHigh,
+        contentTextStyle: const TextStyle(color: textPrimary),
+        actionTextColor: accent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 }
