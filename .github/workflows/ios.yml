@@ -10,6 +10,7 @@ jobs:
         with:
           channel: stable
           cache: true
+      - run: flutter pub get
       - name: Cache pub packages and pods
         uses: actions/cache@v4
         with:
@@ -19,7 +20,6 @@ jobs:
           key: ${{ runner.os }}-deps-${{ hashFiles('ios/Podfile.lock', 'pubspec.lock') }}
           restore-keys: |
             ${{ runner.os }}-deps-
-      - run: flutter pub get
       - name: Write GoogleService-Info.plist
         run: |
           echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}" | base64 --decode \
