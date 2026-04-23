@@ -59,9 +59,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Kick off NHTSA makes fetch immediately
+    // Hydrate synchronously if data is already cached — zero frame delay.
+    final profile = ref.read(userProfileProvider).valueOrNull;
+    if (profile != null) _hydrateIfNeeded(profile);
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(nhtsaMakesProvider.notifier).load();
+      // Skip NHTSA fetch if makes are already cached from a previous mount.
+      if (ref.read(nhtsaMakesProvider).loadState != NhtsaLoadState.loaded) {
+        ref.read(nhtsaMakesProvider.notifier).load();
+      }
+      // Fallback hydration for first-ever launch where provider wasn't ready yet.
+      final lateProfile = ref.read(userProfileProvider).valueOrNull;
+      if (lateProfile != null) _hydrateIfNeeded(lateProfile);
     });
   }
 
@@ -104,15 +113,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } else {
       _selectedMake = profile.carMake;
       if (profile.carMake != null && profile.carMake!.isNotEmpty) {
-        // Trigger model fetch, then set selected model once loaded
-        ref
-            .read(nhtsaModelsProvider.notifier)
-            .loadForMake(profile.carMake!)
-            .then((_) {
-          if (mounted) {
-            setState(() => _selectedModel = profile.carModel);
-          }
-        });
+        final modelsState = ref.read(nhtsaModelsProvider);
+        if (modelsState.forMake == profile.carMake &&
+            modelsState.loadState == NhtsaLoadState.loaded) {
+          // Models already cached for this make — set immediately, no fetch.
+          _selectedModel = profile.carModel;
+        } else {
+          ref
+              .read(nhtsaModelsProvider.notifier)
+              .loadForMake(profile.carMake!)
+              .then((_) {
+            if (mounted) setState(() => _selectedModel = profile.carModel);
+          });
+        }
       }
     }
   }
@@ -191,6 +204,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: profileAsync.when(
+          skipLoadingOnReload: true,
+          skipLoadingOnRefresh: true,
           loading: () => const Center(
             child: CircularProgressIndicator(color: AppTheme.accent),
           ),
@@ -551,8 +566,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   // ---------------------------------------------------------------------------
 
   Widget _buildMakeDropdown(NhtsaMakesState state) {
-    final isLoading = state.loadState == NhtsaLoadState.loading ||
-        state.loadState == NhtsaLoadState.idle;
+    final isLoading = state.loadState == NhtsaLoadState.loading;
 
     if (isLoading) return _loadingDropdownPlaceholder();
 

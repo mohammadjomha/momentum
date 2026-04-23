@@ -33,6 +33,7 @@ class LeaderboardState {
   final Map<String, LeaderboardEntry> allTimeByUid;
   final LeaderboardFilter filter;
   final bool isLoading;
+  final bool isRefreshing;
   final String? error;
 
   const LeaderboardState({
@@ -40,6 +41,7 @@ class LeaderboardState {
     this.allTimeByUid = const {},
     this.filter = LeaderboardFilter.thisWeek,
     this.isLoading = false,
+    this.isRefreshing = false,
     this.error,
   });
 
@@ -48,6 +50,7 @@ class LeaderboardState {
     Map<String, LeaderboardEntry>? allTimeByUid,
     LeaderboardFilter? filter,
     bool? isLoading,
+    bool? isRefreshing,
     String? error,
   }) =>
       LeaderboardState(
@@ -55,6 +58,7 @@ class LeaderboardState {
         allTimeByUid: allTimeByUid ?? this.allTimeByUid,
         filter: filter ?? this.filter,
         isLoading: isLoading ?? this.isLoading,
+        isRefreshing: isRefreshing ?? this.isRefreshing,
         error: error,
       );
 }
@@ -64,26 +68,37 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
     _load();
   }
 
+  // Session-level cache so filter switches never re-fetch the same user doc.
+  final Map<String, String?> _carByUid = {};
+
   Future<void> setFilter(LeaderboardFilter filter) async {
-    state = state.copyWith(filter: filter, isLoading: true, error: null);
+    state = state.copyWith(filter: filter, error: null);
     await _load();
   }
 
   Future<void> refresh() => _load();
 
   Future<void> _load() async {
-    state = state.copyWith(isLoading: true, error: null);
+    state = state.copyWith(
+      isLoading: state.entries.isEmpty,
+      isRefreshing: true,
+      error: null,
+    );
     try {
       final db = FirebaseFirestore.instance;
       final now = DateTime.now();
       final dateFilter = _startDate(state.filter, now);
 
-      // Run filtered query and all-time query in parallel
-      // (skip second query if filter is already allTime)
+      // Run filtered query and (if needed) all-time query in parallel.
+      // Skip the all-time query when its result is already cached in state
+      // (populated on the first load) or when the current filter IS allTime
+      // (in which case filteredTrips == allTimeTrips).
+      final needsAllTime = state.filter != LeaderboardFilter.allTime &&
+          state.allTimeByUid.isEmpty;
       final filteredFuture = _queryTrips(db, dateFilter);
-      final allTimeFuture = state.filter == LeaderboardFilter.allTime
-          ? Future.value(<TripModel>[])
-          : _queryTrips(db, null);
+      final allTimeFuture = needsAllTime
+          ? _queryTrips(db, null)
+          : Future.value(<TripModel>[]);
 
       final results = await Future.wait([filteredFuture, allTimeFuture]);
       final filteredTrips = results[0];
@@ -95,8 +110,11 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
       final entries = _buildEntries(filteredTrips, rankOffset: 1);
       allUids.addAll(entries.map((e) => e.uid));
 
-      // Build all-time lookup (includes any uid not in filtered set)
-      final allTimeEntries = _buildEntries(allTimeTrips, rankOffset: 1);
+      // Build all-time lookup only when fresh data was fetched; otherwise keep
+      // the cached allTimeByUid already in state.
+      final allTimeEntries = needsAllTime || state.filter == LeaderboardFilter.allTime
+          ? _buildEntries(allTimeTrips, rankOffset: 1)
+          : <LeaderboardEntry>[];
       allUids.addAll(allTimeEntries.map((e) => e.uid));
 
       final carByUid = await _fetchCarModels(allUids.toList());
@@ -114,27 +132,32 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
               ))
           .toList();
 
-      final allTimeByUid = {
-        for (final e in allTimeEntries)
-          e.uid: LeaderboardEntry(
-            rank: e.rank,
-            uid: e.uid,
-            username: e.username,
-            carModel: carByUid[e.uid],
-            smoothnessScore: e.smoothnessScore,
-            distance: e.distance,
-            avgSpeed: e.avgSpeed,
-            tripCount: e.tripCount,
-          ),
-      };
+      // Only overwrite allTimeByUid when we actually fetched fresh all-time data.
+      Map<String, LeaderboardEntry>? freshAllTimeByUid;
+      if (allTimeEntries.isNotEmpty) {
+        freshAllTimeByUid = {
+          for (final e in allTimeEntries)
+            e.uid: LeaderboardEntry(
+              rank: e.rank,
+              uid: e.uid,
+              username: e.username,
+              carModel: carByUid[e.uid],
+              smoothnessScore: e.smoothnessScore,
+              distance: e.distance,
+              avgSpeed: e.avgSpeed,
+              tripCount: e.tripCount,
+            ),
+        };
+      }
 
       state = state.copyWith(
         entries: rankedEntries,
-        allTimeByUid: allTimeByUid,
+        allTimeByUid: freshAllTimeByUid,
         isLoading: false,
+        isRefreshing: false,
       );
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, isRefreshing: false, error: e.toString());
     }
   }
 
@@ -146,11 +169,7 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
     if (since != null) {
       q = q.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(since));
     }
-    q = q
-        .orderBy('date', descending: false)
-        .orderBy('smoothnessScore', descending: true)
-        .orderBy('distance', descending: true)
-        .orderBy('avgSpeed', descending: true);
+    q = q.orderBy('date', descending: false);
     final snap = await q.get();
     return snap.docs.map(TripModel.fromDoc).toList();
   }
@@ -208,30 +227,36 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
   Future<Map<String, String?>> _fetchCarModels(List<String> uids) async {
     if (uids.isEmpty) return {};
     final db = FirebaseFirestore.instance;
-    final result = <String, String?>{};
-    // Fetch in batches of 10 (Firestore whereIn limit)
-    for (var i = 0; i < uids.length; i += 10) {
-      final batch = uids.sublist(i, i + 10 > uids.length ? uids.length : i + 10);
-      final docs = await db
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: batch)
-          .get();
-      for (final doc in docs.docs) {
-        final car = doc.data()['car'] as Map<String, dynamic>?;
-        if (car != null) {
-          final make = car['make'] as String?;
-          final model = car['model'] as String?;
-          if (make != null && model != null) {
-            result[doc.id] = '$make $model';
-          } else {
-            result[doc.id] = null;
-          }
-        } else {
-          result[doc.id] = null;
-        }
+
+    // Only fetch uids not already in the session cache.
+    final missing = uids.where((uid) => !_carByUid.containsKey(uid)).toList();
+
+    if (missing.isNotEmpty) {
+      // Build one Future per batch of 10, then fire all batches in parallel.
+      final futures = <Future<void>>[];
+      for (var i = 0; i < missing.length; i += 10) {
+        final batch = missing.sublist(
+            i, i + 10 > missing.length ? missing.length : i + 10);
+        futures.add(
+          db
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: batch)
+              .get()
+              .then((snap) {
+            for (final doc in snap.docs) {
+              final car = doc.data()['car'] as Map<String, dynamic>?;
+              final make = car?['make'] as String?;
+              final model = car?['model'] as String?;
+              _carByUid[doc.id] =
+                  (make != null && model != null) ? '$make $model' : null;
+            }
+          }),
+        );
       }
+      await Future.wait(futures);
     }
-    return result;
+
+    return {for (final uid in uids) uid: _carByUid[uid]};
   }
 
   DateTime? _startDate(LeaderboardFilter filter, DateTime now) {

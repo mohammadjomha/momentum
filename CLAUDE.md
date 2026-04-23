@@ -21,9 +21,9 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/core/theme/app_theme.dart` — app theme; snackBarTheme set globally: backgroundColor surfaceHigh, contentTextStyle white, actionTextColor accent, floating behavior, 8px rounded corners
 - `lib/core/providers/auth_provider.dart` — single `authStateProvider` (StreamProvider<User?>) streaming `FirebaseAuth.instance.authStateChanges()`; all per-user providers must `ref.watch(authStateProvider)` — never read `currentUser?.uid` synchronously
 - `lib/features/trip_history/screens/trip_detail_screen.dart` — trip detail with Google Maps route visualization, smoothness/weather/braking/accel cards — cornering card removed; braking card label reads "Total Brakes" (field: `hardBrakeCount`); accel card label reads "Quick Accels" (field: `hardAccelCount`); card order: map → stats → smoothness → weather → braking → accel
-- `lib/features/leaderboard/screens/leaderboard_screen.dart` — leaderboard screen, queries trips directly, groups by uid client-side, time filter toggle (Today / This Week / This Month / All Time), ranked by smoothnessScore → distance → avgSpeed, current user highlighted with teal border
-- `lib/features/leaderboard/providers/leaderboard_provider.dart` — StateNotifierProvider holding selected time filter and fetched entries
-- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out; tracks `_lastUid` and calls `_resetHydration()` via `ref.listen(authStateProvider)` when uid changes; `_hydrateIfNeeded()` triggered from `ref.listen(userProfileProvider)` in `build()` (not inside `when(data:)`) to avoid illegal provider mutation during build; `_signOut()` calls `ref.invalidate()` on all six per-user providers as a safety net
+- `lib/features/leaderboard/screens/leaderboard_screen.dart` — leaderboard screen, queries trips directly, groups by uid client-side, time filter toggle (Today / This Week / This Month / All Time), ranked by smoothnessScore → distance → avgSpeed, current user highlighted with teal border; list wrapped in `AnimatedOpacity` (opacity 0.4 when `isRefreshing`, 1.0 otherwise, 150ms) for subtle visual feedback during filter switches
+- `lib/features/leaderboard/providers/leaderboard_provider.dart` — StateNotifierProvider holding selected time filter and fetched entries; `isRefreshing` bool added to `LeaderboardState` (set true at start of `_load`, false at end on both success and error paths); all-time trip query cached in `allTimeByUid` state — `needsAllTime` guard fires the full-collection scan exactly once per session (`allTimeByUid.isEmpty && filter != allTime`); `copyWith` null-guard preserves existing `allTimeByUid` on cache-hit paths; `_fetchCarModels` parallelized with `Future.wait` and backed by `_carByUid` session cache on the notifier — user docs never re-fetched across filter switches
+- `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out; tracks `_lastUid` and calls `_resetHydration()` via `ref.listen(authStateProvider)` when uid changes; `_hydrateIfNeeded()` called synchronously from `ref.read(userProfileProvider).valueOrNull` in `initState` (zero-frame flash of empty fields) and from `ref.listen(userProfileProvider)` in `build()` as fallback for first-ever launch; `profileAsync.when` has `skipLoadingOnReload: true, skipLoadingOnRefresh: true` — subsequent tab visits never show the full-screen spinner, stale data shown instantly while Firestore catches up; `nhtsaMakesProvider` and `nhtsaModelsProvider` are both non-autoDispose — `load()` guarded by `loadState != NhtsaLoadState.loaded` so NHTSA HTTP fires exactly once per session; model dropdown skips `loadForMake` on re-entry when `forMake == profile.carMake && loadState == loaded`, setting `_selectedModel` synchronously with no spinner; `NhtsaLoadState.idle` no longer treated as loading in `_buildMakeDropdown`; `_signOut()` calls `ref.invalidate()` on all six per-user providers as a safety net
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
 - `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state; `userProfileProvider` watches `authStateProvider` via `.valueOrNull?.uid` to prevent AsyncLoading propagation
 - `lib/features/profile/models/maintenance_entry.dart` — MaintenanceEntry model with toMap()/fromDoc()
@@ -151,12 +151,14 @@ lib/
 - Filters by `date` range based on selected time filter, then groups by uid client-side keeping each user's best trip
 - Trips shorter than 0.5 km are excluded from leaderboard ranking to filter out accidental/test trips
 - Ranked by: **average smoothnessScore across all qualifying trips** (not best single trip score) → distance → avgSpeed as tiebreakers
-- `allTimeByUid` map maintained separately for All Time filter — leaderboard uses parallel queries and merges results client-side
-- Car model fetched from `users` collection in batches
+- `allTimeByUid` map cached in state — all-time trip query fires exactly once per session (`needsAllTime` guard: `allTimeByUid.isEmpty && filter != allTime`); `copyWith` null-guard preserves cached value on subsequent filter switches
+- Car model fetched from `users` collection via `_fetchCarModels`: batches parallelized with `Future.wait`; results cached in `_carByUid` map on the notifier for the session — no re-fetch on filter switches
 - Time filter defaults to This Week
 - Current user's entry highlighted with `AppTheme.accent.withOpacity(0.3)` border
 - Tapping a leaderboard entry opens `user_mini_card.dart` bottom sheet with that user's profile mini-card
-- Requires a composite Firestore index on (date, smoothnessScore, distance, avgSpeed) — Firebase will print a clickable creation link in the debug console on first query run if not yet created
+- `_queryTrips` uses only `.orderBy('date', descending: false)` — the extra orderBy clauses on smoothnessScore, distance, and avgSpeed were removed because Firestore silently excludes documents where an ordered field does not exist, which was causing old trips (without smoothnessScore) to be dropped entirely
+- No composite Firestore index required — single-field date index is sufficient
+- Stale-while-revalidate caching: spinner only shown on first load when `entries` is empty; switching filter tabs shows the previous filter's cached entries instantly while fresh data loads in the background (`isLoading` condition in `_Body` is `state.isLoading && state.entries.isEmpty`)
 
 ### AI driving coach notes
 - Service: `lib/features/ai_coach/services/coaching_service.dart`
@@ -314,15 +316,15 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Social clubs — full feature. Create/join/leave/delete clubs (max 50 members). Clubs tab is the middle navbar item (replaced marketplace). Club discovery via search (prefix match) and browse-all (sorted by member count). Per-club feed with posts (text + optional image via image_picker, Firebase Storage at club_posts/{clubId}/{timestamp}.jpg). Posts support: like/unlike (toggleLike batch write), comments (subcollection clubs/{clubId}/posts/{postId}/comments with commentCount maintained via batch), edit caption (author only), delete (author or admin). Admin/owner can pin one post per club (pinnedPostId on club doc, shown above feed with teal pin indicator). CreatePostSheet (`lib/features/clubs/widgets/create_post_sheet.dart`) handles image picker (camera + gallery) and caption. PostCard (`lib/features/clubs/widgets/post_card.dart`) renders feed items with like/comment actions, three-dot menu, relative timestamps, "(edited)" label. CommentsSheet and EditPostSheet are inline widgets inside post_card.dart. Per-club leaderboard tab reuses global leaderboard pattern, batched whereIn queries (chunks of 30), filtered to club members, same time filter toggles. ClubsHubScreen supports embedded mode (no back button when used as navbar tab).
 
 ### Known issues
-- **Leaderboard composite Firestore index** — if not yet created, open the leaderboard screen and check the debug console for a Firebase URL, click it, hit Create Index, wait ~60 seconds.
 - **Weather icon placeholder** — weather card shows `Icons.wb_sunny_outlined` for all weather types; custom painter illustrations planned for polish pass.
 - **Push notifications (iOS)** — Android works correctly: system notification fires on app launch for each overdue maintenance entry. iOS notifications are implemented (flutter_local_notifications, permission granted) but delivery is unreliable — notifications only appear when the app is backgrounded shortly after launch due to iOS foreground suppression. No code fix found without Xcode/APNs debugging access. Feature is functional on Android for demo purposes.
 
 ### Remaining (in build order)
-1. **Leaderboard distance aggregation fix** — ensure total distance shown per user on leaderboard aggregates correctly across all qualifying trips
 2. **Simulator trip guard for coaching** — skip AI coaching call when `distance < 0.5 || duration < 1` alongside the existing sensor check
 3. **Adjust/refine AI coaching prompt** — tune wording and context sent to Claude API
-4. **Polish pass** — custom weather painter illustrations (sun, cloud, rain, thunderstorm, snow) replacing placeholder icon, animations, transitions, edge cases
+4. **Custom weather painter illustrations** — replace `Icons.wb_sunny_outlined` placeholder with custom painter illustrations (sun, cloud, rain, thunderstorm, snow)
+5. **Animations and transitions** — polish screen and card transitions
+6. **Edge cases** — remaining edge case handling across features
 
 ## Rules
 - This is a capstone demo — prioritize working features and visual polish over edge case handling
@@ -340,3 +342,4 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - `lib/config/secrets.dart` is gitignored — never commit it; it contains `anthropicApiKey`
 - Do not modify `club_service.dart`, `post_card.dart`, or `create_post_sheet.dart` unless explicitly discussed.
 - All per-user Riverpod providers must `ref.watch(authStateProvider)` from `lib/core/providers/auth_provider.dart` — never call `FirebaseAuth.instance.currentUser?.uid` synchronously inside a provider build function.
+- For any `ConsumerStatefulWidget` screen that can be disposed/recreated (all screens in non-IndexedStack nav): always pair `ref.listen` hydration with a synchronous `ref.read` in `initState` to catch cached provider values. `ref.read` is valid in `ConsumerState.initState()` — `ref` is wired before `initState` runs.

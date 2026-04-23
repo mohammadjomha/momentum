@@ -142,7 +142,7 @@ class _Body extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (state.isLoading) {
+    if (state.isLoading && state.entries.isEmpty) {
       return const Center(
         child: CircularProgressIndicator(
           color: AppTheme.accent,
@@ -169,31 +169,35 @@ class _Body extends ConsumerWidget {
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      itemCount: state.entries.length,
-      itemBuilder: (context, i) {
-        final entry = state.entries[i];
-        final isSelf = entry.uid == currentUid;
-        final allTime = state.allTimeByUid[entry.uid] ?? entry;
-        return _EntryCard(
-          entry: entry,
-          isSelf: isSelf,
-          onTap: isSelf || currentUid == null
-              ? null
-              : () => showUserMiniCard(
-                    context,
-                    ref,
-                    currentUid: currentUid!,
-                    targetUid: entry.uid,
-                    username: entry.username,
-                    carModel: entry.carModel,
-                    tripCount: allTime.tripCount,
-                    totalDistance: allTime.distance,
-                    avgSmoothness: allTime.smoothnessScore,
-                  ),
-        );
-      },
+    return AnimatedOpacity(
+      opacity: state.isRefreshing ? 0.4 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        itemCount: state.entries.length,
+        itemBuilder: (context, i) {
+          final entry = state.entries[i];
+          final isSelf = entry.uid == currentUid;
+          final allTime = state.allTimeByUid[entry.uid] ?? entry;
+          return _EntryCard(
+            entry: entry,
+            isSelf: isSelf,
+            onTap: isSelf || currentUid == null
+                ? null
+                : () => showUserMiniCard(
+                      context,
+                      ref,
+                      currentUid: currentUid!,
+                      targetUid: entry.uid,
+                      username: entry.username,
+                      carModel: entry.carModel,
+                      tripCount: allTime.tripCount,
+                      totalDistance: allTime.distance,
+                      avgSmoothness: allTime.smoothnessScore,
+                    ),
+          );
+        },
+      ),
     );
   }
 }
