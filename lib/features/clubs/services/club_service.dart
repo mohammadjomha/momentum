@@ -37,6 +37,36 @@ class ClubService {
     return ref.id;
   }
 
+  Future<void> updateClub(
+    String clubId, {
+    required String name,
+    required String description,
+  }) async {
+    await _db.collection('clubs').doc(clubId).update({
+      'name': name.trim(),
+      'description': description.trim(),
+    });
+  }
+
+  Future<void> promoteMember(String clubId, String targetUid) async {
+    await _db.collection('clubs').doc(clubId).update({
+      'adminUids': FieldValue.arrayUnion([targetUid]),
+    });
+  }
+
+  Future<void> demoteAdmin(String clubId, String targetUid) async {
+    await _db.collection('clubs').doc(clubId).update({
+      'adminUids': FieldValue.arrayRemove([targetUid]),
+    });
+  }
+
+  Future<void> removeMember(String clubId, String targetUid) async {
+    await _db.collection('clubs').doc(clubId).update({
+      'memberUids': FieldValue.arrayRemove([targetUid]),
+      'adminUids': FieldValue.arrayRemove([targetUid]),
+    });
+  }
+
   Future<void> joinClub(String clubId) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     await _db.collection('clubs').doc(clubId).update({

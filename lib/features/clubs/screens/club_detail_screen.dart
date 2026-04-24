@@ -1,205 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/providers/auth_provider.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../features/trip_history/models/trip_model.dart';
 import '../../friends/widgets/user_mini_card.dart';
 import '../../leaderboard/providers/leaderboard_provider.dart';
 import '../models/club.dart';
 import '../models/club_post.dart';
+import '../providers/club_leaderboard_provider.dart';
 import '../providers/club_provider.dart';
 import '../services/club_service.dart';
 import '../widgets/create_post_sheet.dart';
 import '../widgets/post_card.dart';
-
-// ---------------------------------------------------------------------------
-// Local providers for club leaderboard (not exported to club_provider.dart)
-// ---------------------------------------------------------------------------
-
-final _clubLbFilterProvider =
-    StateProvider.family<LeaderboardFilter, String>((_, id) =>
-        LeaderboardFilter.thisWeek);
-
-final _clubLbProvider =
-    FutureProvider.family<_ClubLbResult, (String, LeaderboardFilter)>(
-        (ref, args) async {
-  final (clubId, filter) = args;
-
-  // We need memberUids — read from the club stream's current value
-  final clubAsync = ref.read(clubDetailProvider(clubId));
-  final club = clubAsync.valueOrNull;
-  if (club == null || club.memberUids.isEmpty) {
-    return _ClubLbResult(entries: [], allTimeByUid: {});
-  }
-
-  final db = FirebaseFirestore.instance;
-  final now = DateTime.now();
-  final since = _startDate(filter, now);
-
-  final memberUids = club.memberUids;
-
-  Future<List<TripModel>> queryBatch(List<String> uids, DateTime? from) async {
-    Query<Map<String, dynamic>> q = db
-        .collection('trips')
-        .where('uid', whereIn: uids)
-        .where('smoothnessScore', isGreaterThan: 0);
-    if (from != null) {
-      q = q.where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(from));
-    }
-    final snap = await q.get();
-    return snap.docs.map(TripModel.fromDoc).toList();
-  }
-
-  // Split into batches of 30 (Firestore whereIn limit)
-  final filteredTrips = <TripModel>[];
-  final allTimeTrips = <TripModel>[];
-
-  for (var i = 0; i < memberUids.length; i += 30) {
-    final batch =
-        memberUids.sublist(i, (i + 30).clamp(0, memberUids.length));
-    final fRes = queryBatch(batch, since);
-    final aRes = filter == LeaderboardFilter.allTime
-        ? Future.value(<TripModel>[])
-        : queryBatch(batch, null);
-    final results = await Future.wait([fRes, aRes]);
-    filteredTrips.addAll(results[0]);
-    allTimeTrips.addAll(results[1]);
-  }
-
-  final effectiveAllTime =
-      filter == LeaderboardFilter.allTime ? filteredTrips : allTimeTrips;
-
-  final entries = _buildEntries(filteredTrips);
-  final allTimeEntries = _buildEntries(effectiveAllTime);
-
-  // Fetch car models
-  final allUids = {
-    ...entries.map((e) => e.uid),
-    ...allTimeEntries.map((e) => e.uid),
-  }.toList();
-  final carByUid = await _fetchCarModels(allUids, db);
-
-  final ranked = entries
-      .map((e) => LeaderboardEntry(
-            rank: e.rank,
-            uid: e.uid,
-            username: e.username,
-            carModel: carByUid[e.uid],
-            smoothnessScore: e.smoothnessScore,
-            distance: e.distance,
-            avgSpeed: e.avgSpeed,
-            tripCount: e.tripCount,
-          ))
-      .toList();
-
-  final allTimeByUid = {
-    for (final e in allTimeEntries)
-      e.uid: LeaderboardEntry(
-        rank: e.rank,
-        uid: e.uid,
-        username: e.username,
-        carModel: carByUid[e.uid],
-        smoothnessScore: e.smoothnessScore,
-        distance: e.distance,
-        avgSpeed: e.avgSpeed,
-        tripCount: e.tripCount,
-      ),
-  };
-
-  return _ClubLbResult(entries: ranked, allTimeByUid: allTimeByUid);
-});
-
-class _ClubLbResult {
-  final List<LeaderboardEntry> entries;
-  final Map<String, LeaderboardEntry> allTimeByUid;
-  const _ClubLbResult({required this.entries, required this.allTimeByUid});
-}
-
-List<LeaderboardEntry> _buildEntries(List<TripModel> trips) {
-  final byUid = <String, List<TripModel>>{};
-  for (final t in trips.where((t) => t.distance >= 0.5)) {
-    byUid.putIfAbsent(t.uid, () => []).add(t);
-  }
-  final agg = byUid.entries.map((e) {
-    final userTrips = e.value;
-    final scored =
-        userTrips.where((t) => t.smoothnessScore > 0).toList();
-    final avgSmooth = scored.isEmpty
-        ? 0.0
-        : scored.fold(0.0, (s, t) => s + t.smoothnessScore) /
-            scored.length;
-    final totalDist = userTrips.fold(0.0, (s, t) => s + t.distance);
-    final avgSpd = userTrips.isEmpty
-        ? 0.0
-        : userTrips.fold(0.0, (s, t) => s + t.avgSpeed) /
-            userTrips.length;
-    return (
-      uid: e.key,
-      username: userTrips.first.username,
-      avgSmoothness: avgSmooth,
-      totalDistance: totalDist,
-      avgSpeed: avgSpd,
-      tripCount: userTrips.length,
-    );
-  }).toList()
-    ..sort((a, b) {
-      final c1 = b.avgSmoothness.compareTo(a.avgSmoothness);
-      if (c1 != 0) return c1;
-      final c2 = b.totalDistance.compareTo(a.totalDistance);
-      if (c2 != 0) return c2;
-      return b.avgSpeed.compareTo(a.avgSpeed);
-    });
-
-  return agg.asMap().entries
-      .map((e) => LeaderboardEntry(
-            rank: e.key + 1,
-            uid: e.value.uid,
-            username: e.value.username,
-            carModel: null,
-            smoothnessScore: e.value.avgSmoothness,
-            distance: e.value.totalDistance,
-            avgSpeed: e.value.avgSpeed,
-            tripCount: e.value.tripCount,
-          ))
-      .toList();
-}
-
-Future<Map<String, String?>> _fetchCarModels(
-    List<String> uids, FirebaseFirestore db) async {
-  if (uids.isEmpty) return {};
-  final result = <String, String?>{};
-  for (var i = 0; i < uids.length; i += 10) {
-    final batch = uids.sublist(i, (i + 10).clamp(0, uids.length));
-    final docs = await db
-        .collection('users')
-        .where(FieldPath.documentId, whereIn: batch)
-        .get();
-    for (final doc in docs.docs) {
-      final car = doc.data()['car'] as Map<String, dynamic>?;
-      final make = car?['make'] as String?;
-      final model = car?['model'] as String?;
-      result[doc.id] =
-          (make != null && model != null) ? '$make $model' : null;
-    }
-  }
-  return result;
-}
-
-DateTime? _startDate(LeaderboardFilter filter, DateTime now) {
-  switch (filter) {
-    case LeaderboardFilter.today:
-      return DateTime(now.year, now.month, now.day);
-    case LeaderboardFilter.thisWeek:
-      return DateTime(now.year, now.month, now.day - (now.weekday - 1));
-    case LeaderboardFilter.thisMonth:
-      return DateTime(now.year, now.month, 1);
-    case LeaderboardFilter.allTime:
-      return null;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Main screen
@@ -213,7 +27,7 @@ class ClubDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final clubAsync = ref.watch(clubDetailProvider(clubId));
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final uid = ref.watch(authStateProvider).valueOrNull?.uid ?? '';
 
     return clubAsync.when(
       loading: () => const Scaffold(
@@ -241,6 +55,7 @@ class ClubDetailScreen extends ConsumerWidget {
 
         final isMember = club.memberUids.contains(uid);
         final isOwner = club.ownerUid == uid;
+        final isAdmin = club.adminUids.contains(uid);
 
         return DefaultTabController(
           length: 2,
@@ -259,13 +74,13 @@ class ClubDetailScreen extends ConsumerWidget {
                 ),
               ),
               actions: [
-                if (isOwner)
+                if (isOwner || isAdmin)
                   IconButton(
                     icon: const Icon(Icons.settings_outlined,
                         color: AppTheme.textPrimary, size: 20),
                     tooltip: 'Club settings',
                     onPressed: () =>
-                        _showSettingsSheet(context, ref, club, uid),
+                        _showSettingsSheet(context, ref, club, uid, isOwner, isAdmin),
                   ),
               ],
               bottom: const TabBar(
@@ -310,8 +125,8 @@ class ClubDetailScreen extends ConsumerWidget {
     return null;
   }
 
-  void _showSettingsSheet(
-      BuildContext context, WidgetRef ref, Club club, String uid) {
+  void _showSettingsSheet(BuildContext context, WidgetRef ref, Club club,
+      String uid, bool isOwner, bool isAdmin) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.surface,
@@ -322,37 +137,48 @@ class ClubDetailScreen extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined,
-                  color: AppTheme.textPrimary, size: 20),
-              title: const Text('Edit club',
-                  style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500)),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Coming soon'),
-                    backgroundColor: AppTheme.surfaceHigh,
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline_rounded,
-                  color: AppTheme.speedRed, size: 20),
-              title: const Text('Delete club',
-                  style: TextStyle(
-                      color: AppTheme.speedRed,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500)),
-              onTap: () {
-                Navigator.pop(context);
-                _confirmDelete(context, ref, uid);
-              },
-            ),
+            if (isOwner)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined,
+                    color: AppTheme.textPrimary, size: 20),
+                title: const Text('Edit club',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditClubSheet(context, ref, club);
+                },
+              ),
+            if (isOwner || isAdmin)
+              ListTile(
+                leading: const Icon(Icons.people_outline_rounded,
+                    color: AppTheme.textPrimary, size: 20),
+                title: const Text('Members',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showMembersSheet(context, ref, club, uid);
+                },
+              ),
+            if (isOwner)
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded,
+                    color: AppTheme.speedRed, size: 20),
+                title: const Text('Delete club',
+                    style: TextStyle(
+                        color: AppTheme.speedRed,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDelete(context, ref, uid);
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -388,6 +214,432 @@ class ClubDetailScreen extends ConsumerWidget {
                 style: TextStyle(color: AppTheme.speedRed)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showEditClubSheet(BuildContext context, WidgetRef ref, Club club) {
+    final nameController = TextEditingController(text: club.name);
+    final descController = TextEditingController(text: club.description);
+    final formKey = GlobalKey<FormState>();
+    bool saving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+              20, 16, 20, MediaQuery.of(sheetCtx).viewInsets.bottom + 24),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.textSecondary.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'EDIT CLUB',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: nameController,
+                  maxLength: 50,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Club name',
+                    labelStyle:
+                        const TextStyle(color: AppTheme.textSecondary),
+                    filled: true,
+                    fillColor: AppTheme.surfaceHigh,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    counterStyle:
+                        const TextStyle(color: AppTheme.textSecondary),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: descController,
+                  maxLength: 200,
+                  maxLines: 3,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'Description',
+                    labelStyle:
+                        const TextStyle(color: AppTheme.textSecondary),
+                    filled: true,
+                    fillColor: AppTheme.surfaceHigh,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    counterStyle:
+                        const TextStyle(color: AppTheme.textSecondary),
+                  ),
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Required' : null,
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            setState(() => saving = true);
+                            try {
+                              await clubService.updateClub(
+                                clubId,
+                                name: nameController.text,
+                                description: descController.text,
+                              );
+                              if (sheetCtx.mounted) {
+                                Navigator.pop(sheetCtx);
+                              }
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Club updated')),
+                                );
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Error: $e')),
+                                );
+                              }
+                            } finally {
+                              if (sheetCtx.mounted) {
+                                setState(() => saving = false);
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.accent,
+                      foregroundColor: AppTheme.background,
+                      disabledBackgroundColor:
+                          AppTheme.accent.withValues(alpha: 0.4),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                color: AppTheme.background, strokeWidth: 2),
+                          )
+                        : const Text('SAVE',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.5)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showMembersSheet(
+      BuildContext context, WidgetRef ref, Club club, String uid) async {
+    // Fetch all member docs in parallel.
+    List<_MemberInfo> members;
+    try {
+      final db = FirebaseFirestore.instance;
+      final docs = await Future.wait(
+        club.memberUids.map((id) => db.collection('users').doc(id).get()),
+      );
+      members = docs.map((doc) {
+        final data = doc.data() ?? {};
+        final carMap = data['car'] as Map<String, dynamic>?;
+        final make = (carMap?['make'] as String?) ?? '';
+        final model = (carMap?['model'] as String?) ?? '';
+        final car =
+            (make.isNotEmpty && model.isNotEmpty) ? '$make $model' : '';
+        return _MemberInfo(
+          uid: doc.id,
+          username: (data['username'] as String?) ?? doc.id,
+          car: car,
+          isOwner: doc.id == club.ownerUid,
+          isAdmin: club.adminUids.contains(doc.id),
+        );
+      }).toList();
+
+      // Sort: owner first, then admins alpha, then members alpha.
+      members.sort((_MemberInfo a, _MemberInfo b) {
+        if (a.isOwner != b.isOwner) return a.isOwner ? -1 : 1;
+        if (a.isAdmin != b.isAdmin) return a.isAdmin ? -1 : 1;
+        return a.username.toLowerCase().compareTo(b.username.toLowerCase());
+      });
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading members: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
+    final isViewerOwner = club.ownerUid == uid;
+    final isViewerAdmin = club.adminUids.contains(uid);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetCtx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.textSecondary.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Members (${club.memberUids.length})',
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 24),
+                itemCount: members.length,
+                itemBuilder: (_, i) {
+                  final member = members[i];
+                  final isSelf = member.uid == uid;
+                  final isTarget = !isSelf && !member.isOwner;
+
+                  Widget? badge;
+                  if (member.isOwner) {
+                    badge = _RoleBadge(label: 'Owner');
+                  } else if (member.isAdmin) {
+                    badge = _RoleBadge(label: 'Admin');
+                  }
+
+                  Widget? menuButton;
+                  if (isTarget) {
+                    List<PopupMenuEntry<String>> menuItems = [];
+                    if (isViewerOwner) {
+                      if (member.isAdmin) {
+                        menuItems = [
+                          const PopupMenuItem(
+                              value: 'demote',
+                              child: Text('Demote from admin')),
+                          const PopupMenuItem(
+                              value: 'remove',
+                              child: Text('Remove from club')),
+                        ];
+                      } else {
+                        menuItems = [
+                          const PopupMenuItem(
+                              value: 'promote',
+                              child: Text('Make admin')),
+                          const PopupMenuItem(
+                              value: 'remove',
+                              child: Text('Remove from club')),
+                        ];
+                      }
+                    } else if (isViewerAdmin && !member.isAdmin) {
+                      menuItems = [
+                        const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('Remove from club')),
+                      ];
+                    }
+
+                    if (menuItems.isNotEmpty) {
+                      menuButton = PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert,
+                            color: AppTheme.textSecondary, size: 20),
+                        color: AppTheme.surfaceHigh,
+                        onSelected: (action) async {
+                          Navigator.pop(sheetCtx);
+                          try {
+                            switch (action) {
+                              case 'promote':
+                                await clubService.promoteMember(
+                                    clubId, member.uid);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Promoted to admin')),
+                                  );
+                                }
+                              case 'demote':
+                                await clubService.demoteAdmin(
+                                    clubId, member.uid);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text('Demoted from admin')),
+                                  );
+                                }
+                              case 'remove':
+                                await clubService.removeMember(
+                                    clubId, member.uid);
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Member removed')),
+                                  );
+                                }
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error: $e')),
+                              );
+                            }
+                          }
+                        },
+                        itemBuilder: (_) => menuItems,
+                      );
+                    }
+                  }
+
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: AppTheme.surfaceHigh,
+                      child: Text(
+                        member.username.isNotEmpty
+                            ? member.username[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                            color: AppTheme.accent,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    title: Text(member.username,
+                        style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                    subtitle: member.car.isNotEmpty
+                        ? Text(member.car,
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 12))
+                        : null,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ?badge,
+                        if (menuButton != null) ...[
+                          if (badge != null) const SizedBox(width: 4),
+                          menuButton,
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Member info model (local to this file)
+// ---------------------------------------------------------------------------
+
+class _MemberInfo {
+  final String uid;
+  final String username;
+  final String car;
+  final bool isOwner;
+  final bool isAdmin;
+  const _MemberInfo({
+    required this.uid,
+    required this.username,
+    required this.car,
+    required this.isOwner,
+    required this.isAdmin,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Role badge widget (local to this file)
+// ---------------------------------------------------------------------------
+
+class _RoleBadge extends StatelessWidget {
+  const _RoleBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppTheme.accent.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: AppTheme.accent,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -793,8 +1045,8 @@ class _LeaderboardTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(_clubLbFilterProvider(clubId));
-    final async = ref.watch(_clubLbProvider((clubId, filter)));
+    final state = ref.watch(clubLeaderboardProvider(clubId));
+    final notifier = ref.read(clubLeaderboardProvider(clubId).notifier);
 
     return Column(
       children: [
@@ -809,12 +1061,10 @@ class _LeaderboardTab extends ConsumerWidget {
             ),
             child: Row(
               children: LeaderboardFilter.values.map((f) {
-                final isActive = f == filter;
+                final isActive = f == state.filter;
                 return Expanded(
                   child: GestureDetector(
-                    onTap: () => ref
-                        .read(_clubLbFilterProvider(clubId).notifier)
-                        .state = f,
+                    onTap: () => notifier.setFilter(f),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
                       decoration: BoxDecoration(
@@ -846,55 +1096,63 @@ class _LeaderboardTab extends ConsumerWidget {
         ),
 
         Expanded(
-          child: async.when(
-            loading: () => const Center(
-                child: CircularProgressIndicator(color: AppTheme.accent)),
-            error: (e, _) => Center(
-                child: Text('Error: $e',
-                    style:
-                        const TextStyle(color: AppTheme.speedRed))),
-            data: (result) {
-              if (result.entries.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Not enough data',
-                    style: TextStyle(
-                        color: AppTheme.textSecondary, fontSize: 14),
-                  ),
-                );
-              }
-              return ListView.builder(
-                padding:
-                    const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                itemCount: result.entries.length,
-                itemBuilder: (context, i) {
-                  final entry = result.entries[i];
-                  final isSelf = entry.uid == uid;
-                  final allTime =
-                      result.allTimeByUid[entry.uid] ?? entry;
-                  return _LbEntryCard(
-                    entry: entry,
-                    isSelf: isSelf,
-                    onTap: isSelf
-                        ? null
-                        : () => showUserMiniCard(
-                              context,
-                              ref,
-                              currentUid: uid,
-                              targetUid: entry.uid,
-                              username: entry.username,
-                              carModel: entry.carModel,
-                              tripCount: allTime.tripCount,
-                              totalDistance: allTime.distance,
-                              avgSmoothness: allTime.smoothnessScore,
-                            ),
-                  );
-                },
-              );
-            },
-          ),
+          child: _buildBody(context, ref, state),
         ),
       ],
+    );
+  }
+
+  Widget _buildBody(
+      BuildContext context, WidgetRef ref, ClubLeaderboardState state) {
+    if (state.isLoading && state.entries.isEmpty) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppTheme.accent));
+    }
+
+    if (state.error != null) {
+      return Center(
+          child: Text('Error: ${state.error}',
+              style: const TextStyle(color: AppTheme.speedRed)));
+    }
+
+    if (state.entries.isEmpty) {
+      return const Center(
+        child: Text(
+          'No trips recorded this period',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+        ),
+      );
+    }
+
+    return AnimatedOpacity(
+      opacity: state.isRefreshing ? 0.4 : 1.0,
+      duration: const Duration(milliseconds: 200),
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        itemCount: state.entries.length,
+        itemBuilder: (context, i) {
+          final entry = state.entries[i];
+          final isSelf = entry.uid == uid;
+          final allTime = state.allTimeByUid[entry.uid] ?? entry;
+          return _LbEntryCard(
+            entry: entry,
+            isSelf: isSelf,
+            onTap: isSelf
+                ? null
+                : () => showUserMiniCard(
+                      context,
+                      ref,
+                      currentUid: uid,
+                      targetUid: entry.uid,
+                      username: entry.username,
+                      carModel: entry.carModel,
+                      tripCount: allTime.tripCount,
+                      totalDistance: allTime.distance,
+                      avgSmoothness: allTime.smoothnessScore,
+                    ),
+          );
+        },
+      ),
     );
   }
 }
