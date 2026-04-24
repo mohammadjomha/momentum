@@ -78,6 +78,11 @@ class LeaderboardNotifier extends StateNotifier<LeaderboardState> {
 
   Future<void> refresh() => _load();
 
+  Future<void> forceRefresh() {
+    state = state.copyWith(allTimeByUid: {});
+    return _load();
+  }
+
   Future<void> _load() async {
     state = state.copyWith(
       isLoading: state.entries.isEmpty,

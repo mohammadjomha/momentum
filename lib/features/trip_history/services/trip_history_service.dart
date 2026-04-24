@@ -20,6 +20,18 @@ class TripHistoryService {
     }
   }
 
+  Future<void> deleteTrip(String tripId, double distanceKm) async {
+    await _db.collection('trips').doc(tripId).delete();
+
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      await _db.collection('users').doc(uid).update({
+        'totalTrips': FieldValue.increment(-1),
+        'totalDistance': FieldValue.increment(-distanceKm),
+      });
+    }
+  }
+
   Stream<List<TripModel>> tripsStream(String uid) {
     return _db
         .collection('trips')

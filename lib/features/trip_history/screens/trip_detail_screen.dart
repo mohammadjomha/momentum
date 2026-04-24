@@ -3,26 +3,30 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../features/leaderboard/providers/leaderboard_provider.dart';
 import '../models/trip_model.dart';
 import '../services/coaching_service.dart';
+import '../services/trip_history_service.dart';
 import '../widgets/share_trip_card.dart';
 
-class TripDetailScreen extends StatefulWidget {
+class TripDetailScreen extends ConsumerStatefulWidget {
   final TripModel trip;
   const TripDetailScreen({super.key, required this.trip});
 
   @override
-  State<TripDetailScreen> createState() => _TripDetailScreenState();
+  ConsumerState<TripDetailScreen> createState() => _TripDetailScreenState();
 }
 
-class _TripDetailScreenState extends State<TripDetailScreen> {
+class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
   final GlobalKey _shareBoundaryKey = GlobalKey();
   bool _isSharing = false;
+  bool _isDeleting = false;
   String? _coachingNote;
   bool _coachingLoading = false;
 
@@ -49,6 +53,61 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _coachingLoading = false);
+    }
+  }
+
+  Future<void> _deleteTrip() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceHigh,
+        title: const Text(
+          'Delete Trip',
+          style: TextStyle(color: AppTheme.textPrimary),
+        ),
+        content: const Text(
+          'This trip will be permanently deleted.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: AppTheme.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isDeleting = true);
+    try {
+      await TripHistoryService()
+          .deleteTrip(widget.trip.id, widget.trip.distance);
+      ref.read(leaderboardProvider.notifier).forceRefresh();
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Trip deleted')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isDeleting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to delete trip.')),
+        );
+      }
     }
   }
 
@@ -133,7 +192,11 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           SafeArea(
             child: Column(
               children: [
-                _TopBar(trip: widget.trip),
+                _TopBar(
+                  trip: widget.trip,
+                  isDeleting: _isDeleting,
+                  onDelete: _deleteTrip,
+                ),
                 Expanded(
                   child: CustomScrollView(
                     slivers: [
@@ -247,14 +310,20 @@ class _ShareButton extends StatelessWidget {
 
 class _TopBar extends StatelessWidget {
   final TripModel trip;
-  const _TopBar({required this.trip});
+  final bool isDeleting;
+  final VoidCallback onDelete;
+  const _TopBar({
+    required this.trip,
+    required this.isDeleting,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: AppTheme.background,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 20, 0),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
         child: Row(
           children: [
             IconButton(
@@ -272,6 +341,23 @@ class _TopBar extends StatelessWidget {
                 letterSpacing: 3,
               ),
             ),
+            const Spacer(),
+            if (isDeleting)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: AppTheme.textSecondary,
+                  strokeWidth: 2,
+                ),
+              )
+            else
+              IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline),
+                color: AppTheme.textSecondary,
+                iconSize: 22,
+              ),
           ],
         ),
       ),
@@ -889,7 +975,7 @@ class _CoachingCard extends StatelessWidget {
                 ),
                 SizedBox(width: 12),
                 Text(
-                  'Analyzing your drive\u2026',
+                  'Analyzing your drive…',
                   style: TextStyle(
                     color: AppTheme.textSecondary,
                     fontSize: 14,

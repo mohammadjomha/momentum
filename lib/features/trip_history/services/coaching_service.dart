@@ -6,14 +6,18 @@ import 'package:http/http.dart' as http;
 import '../../../config/secrets.dart';
 import '../models/trip_model.dart';
 
+const _shortTripMessage =
+    'Trip too short for coaching. Drive at least 0.5 km to receive AI feedback.';
+
 const _noSensorMessage =
     'Sensor data unavailable for this trip. Record a new trip to receive AI coaching.';
 
 class CoachingService {
   static Future<String> generateAndStoreCoachingNote(TripModel trip) async {
-    final note = (trip.peakBrakeG == 0 && trip.peakAccelG == 0)
-        ? _noSensorMessage
-        : await _callApi(trip);
+    if (trip.distance < 0.5) return _shortTripMessage;
+    if (trip.peakBrakeG == 0 && trip.peakAccelG == 0) return _noSensorMessage;
+
+    final note = await _callApi(trip);
 
     await FirebaseFirestore.instance
         .collection('trips')
@@ -25,9 +29,10 @@ class CoachingService {
 
   static Future<String> _callApi(TripModel trip) async {
     final durationMin = trip.duration.inSeconds / 60.0;
-    final prompt = '''You are an automotive driving coach. Analyze this trip and give a short, direct coaching note (3-4 sentences max). Be specific to the numbers. Tone: honest, encouraging, performance-focused.
+    final weatherLabel = trip.weatherLabel.isEmpty ? 'Unknown' : trip.weatherLabel;
+    final prompt = '''You are an expert driving coach analyzing telemetry data from a real drive.
 
-Trip stats:
+Stats:
 - Distance: ${trip.distance.toStringAsFixed(2)} km
 - Duration: ${durationMin.toStringAsFixed(1)} min
 - Max speed: ${trip.maxSpeed.toStringAsFixed(0)} km/h
@@ -36,7 +41,10 @@ Trip stats:
 - Peak braking: ${trip.peakBrakeG.toStringAsFixed(2)}G
 - Avg braking: ${trip.avgBrakeG.toStringAsFixed(2)}G
 - Peak acceleration: ${trip.peakAccelG.toStringAsFixed(2)}G
-- Weather: ${trip.weatherLabel.isEmpty ? 'Unknown' : trip.weatherLabel}''';
+- Avg acceleration: ${trip.avgAccelG.toStringAsFixed(2)}G
+- Weather: $weatherLabel
+
+Give the driver 2–3 sentences of specific, actionable feedback based only on these numbers. Reference the actual values. Do not make assumptions about road type, speed limits, or route conditions. Do not use headers, labels, or markdown. Start directly with the feedback.''';
 
     final response = await http.post(
       Uri.parse('https://api.anthropic.com/v1/messages'),
