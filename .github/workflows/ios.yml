@@ -35,7 +35,16 @@ jobs:
             > lib/config/secrets.dart
       - run: pod repo update
         working-directory: ios
-      - run: flutter build ios --release --no-codesign
+      - name: Build iOS (unsigned)
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=CI=true
+        env:
+          CODE_SIGNING_ALLOWED: "NO"
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGN_IDENTITY: ""
+          EXPANDED_CODE_SIGN_IDENTITY: ""
+          EXPANDED_CODE_SIGN_IDENTITY_NAME: ""
       - run: mkdir -p Payload
         working-directory: build/ios/iphoneos
       - run: cp -R Runner.app Payload/
