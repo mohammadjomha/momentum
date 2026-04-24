@@ -38,7 +38,8 @@ jobs:
       - name: Build iOS (unsigned)
         run: |
           flutter build ios --release --no-codesign \
-            --dart-define=CI=true
+            --dart-define=CI=true \
+            --verbose 2>&1 | tail -200
         env:
           CODE_SIGNING_ALLOWED: "NO"
           CODE_SIGNING_REQUIRED: "NO"
