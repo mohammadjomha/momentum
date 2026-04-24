@@ -67,7 +67,7 @@ class ClubDetailScreen extends ConsumerWidget {
               title: Text(
                 club.name.toUpperCase(),
                 style: const TextStyle(
-                  color: AppTheme.textPrimary,
+                  color: AppTheme.accent,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 2,

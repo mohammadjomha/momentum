@@ -43,48 +43,49 @@ class _ClubsHubScreenState extends ConsumerState<ClubsHubScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        elevation: 0,
-        leading: widget.embedded
-            ? null
-            : IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: AppTheme.textPrimary, size: 20),
-                onPressed: () => context.pop(),
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: const Text(
+                'CLUBS',
+                style: TextStyle(
+                  color: AppTheme.accent,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 3,
+                ),
               ),
-        title: const Text(
-          'CLUBS',
-          style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2,
-          ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.accent,
-          indicatorWeight: 2,
-          labelColor: AppTheme.accent,
-          unselectedLabelColor: AppTheme.textSecondary,
-          labelStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.5,
-          ),
-          tabs: const [
-            Tab(text: 'MY CLUBS'),
-            Tab(text: 'DISCOVER'),
+            ),
+            TabBar(
+              controller: _tabController,
+              indicatorColor: AppTheme.accent,
+              indicatorWeight: 2,
+              labelColor: AppTheme.accent,
+              unselectedLabelColor: AppTheme.textSecondary,
+              labelStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+              ),
+              tabs: const [
+                Tab(text: 'MY CLUBS'),
+                Tab(text: 'DISCOVER'),
+              ],
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _MyClubsTab(onBrowse: _switchToDiscover),
+                  const _DiscoverTab(),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _MyClubsTab(onBrowse: _switchToDiscover),
-          const _DiscoverTab(),
-        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppTheme.accent,

@@ -57,10 +57,10 @@ class _Header extends StatelessWidget {
           const Text(
             'LEADERBOARD',
             style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 2,
+              color: AppTheme.accent,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 3,
             ),
           ),
           const Spacer(),
