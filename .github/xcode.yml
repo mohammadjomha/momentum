@@ -1,0 +1,62 @@
+name: iOS-xcodebuild-test
+on:
+  workflow_dispatch:
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Cache pub packages and pods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/.pub-cache
+          key: ${{ runner.os }}-deps-${{ hashFiles('ios/Podfile.lock', 'pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+      - name: Write GoogleService-Info.plist
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}" | base64 --decode \
+            > ios/Runner/GoogleService-Info.plist
+      - name: Inject Google Maps API key (iOS)
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :GMSApiKey ${{ secrets.GOOGLE_MAPS_API_KEY }}" \
+            ios/Runner/Info.plist
+      - name: Inject Anthropic API key
+        run: |
+          mkdir -p lib/config
+          echo "const String anthropicApiKey = '${{ secrets.ANTHROPIC_API_KEY }}';" \
+            > lib/config/secrets.dart
+      - run: pod repo update
+        working-directory: ios
+      - name: Build iOS (unsigned)
+        run: |
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            BUILD_DIR="$PWD/build/ios" \
+            2>&1 | tail -100
+      - run: mkdir -p Payload
+        working-directory: build/ios/Release-iphoneos
+      - run: cp -R Runner.app Payload/
+        working-directory: build/ios/Release-iphoneos
+      - name: Package IPA
+        run: ditto -c -k --sequesterRsrc --keepParent Payload FlutterIpaExport.ipa
+        working-directory: build/ios/Release-iphoneos
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlutterIpaExport
+          path: build/ios/Release-iphoneos/FlutterIpaExport.ipa
