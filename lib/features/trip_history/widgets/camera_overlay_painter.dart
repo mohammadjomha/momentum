@@ -442,7 +442,7 @@ class CameraOverlayPainter extends CustomPainter {
         text: '@$username',
         style: const TextStyle(
           color: AppTheme.textSecondary,
-          fontSize: 18,
+          fontSize: 13,
           fontWeight: FontWeight.w800,
           height: 1,
         ),
