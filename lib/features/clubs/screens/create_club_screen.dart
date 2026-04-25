@@ -82,6 +82,7 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
               _field(
                 controller: _nameCtrl,
                 hint: 'e.g. Beirut Speed Run',
+                maxLength: 50,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) return 'Name is required';
                   if (v.trim().length < 3) return 'At least 3 characters';
@@ -95,6 +96,7 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
                 controller: _descCtrl,
                 hint: 'What is this club about?',
                 maxLines: 4,
+                maxLength: 200,
                 validator: (v) {
                   if (v == null || v.trim().isEmpty) {
                     return 'Description is required';
@@ -157,11 +159,13 @@ class _CreateClubScreenState extends ConsumerState<CreateClubScreen> {
     required TextEditingController controller,
     required String hint,
     int maxLines = 1,
+    int? maxLength,
     String? Function(String?)? validator,
   }) =>
       TextFormField(
         controller: controller,
         maxLines: maxLines,
+        maxLength: maxLength,
         style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
         validator: validator,
         decoration: InputDecoration(

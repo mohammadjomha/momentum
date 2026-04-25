@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/providers/auth_provider.dart';
 
 import '../../../features/trip_history/models/trip_model.dart';
 
@@ -285,5 +286,5 @@ final leaderboardProvider =
 );
 
 final currentUidProvider = Provider<String?>(
-  (_) => FirebaseAuth.instance.currentUser?.uid,
+  (ref) => ref.watch(authStateProvider).valueOrNull?.uid,
 );

@@ -89,6 +89,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       }
 
       _routePoints.clear();
+      _sensorService.reset();
 
       await _locationService.startTracking();
       await _sensorService.startTracking();
@@ -173,7 +174,7 @@ class TrackingNotifier extends StateNotifier<TrackingState> {
       tripData: TripData.initial(),
     );
 
-    if (tripData.duration.inSeconds > 5) {
+    if (tripData.duration.inSeconds > 5 && tripData.distance >= 0.1) {
       _storageService.saveTrip(tripData);
       _saveToFirestore(tripData, routeSnapshot);
     }

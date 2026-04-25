@@ -64,16 +64,17 @@ class NotificationService {
       return due.isBefore(today);
     }).toList();
 
-    for (int i = 0; i < overdue.length; i++) {
-      final data = overdue[i].data();
+    for (final doc in overdue) {
+      final data = doc.data();
       final type = data['type'] as String? ?? 'Maintenance';
       final lastTs = data['lastDoneDate'] as Timestamp?;
       final lastDone = lastTs != null
           ? DateFormat('MMM d, yyyy').format(lastTs.toDate())
           : 'unknown';
+      final notifId = doc.id.hashCode.abs() % 100000;
 
       await _plugin.show(
-        i,
+        notifId,
         'Your $type is overdue',
         'Last done: $lastDone',
         const NotificationDetails(

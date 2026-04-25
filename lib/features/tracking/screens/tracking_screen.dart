@@ -7,14 +7,62 @@ import '../../../presentation/widgets/speedometer_widget.dart';
 import '../providers/tracking_provider.dart';
 import '../widgets/gps_status_indicator.dart';
 
-class TrackingScreen extends ConsumerWidget {
+class TrackingScreen extends ConsumerStatefulWidget {
   const TrackingScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TrackingScreen> createState() => _TrackingScreenState();
+}
+
+class _TrackingScreenState extends ConsumerState<TrackingScreen> {
+  Future<void> _onBackPressed(BuildContext context) async {
+    final isTracking = ref.read(trackingProvider).isTracking;
+    if (!isTracking) {
+      if (context.mounted) Navigator.of(context).pop();
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surfaceHigh,
+        title: const Text(
+          'Stop tracking?',
+          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700),
+        ),
+        content: const Text(
+          'Your current trip will be stopped and saved.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Stop Trip', style: TextStyle(color: AppTheme.speedRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      ref.read(trackingProvider.notifier).stopTracking();
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(trackingProvider);
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBackPressed(context);
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Padding(
@@ -45,7 +93,7 @@ class TrackingScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

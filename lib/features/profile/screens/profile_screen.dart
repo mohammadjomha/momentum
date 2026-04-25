@@ -1,4 +1,3 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -1539,10 +1538,12 @@ class _FriendRequestCard extends ConsumerWidget {
           const SizedBox(width: 4),
           ElevatedButton(
             onPressed: () async {
+              final uid = ref.read(authStateProvider).valueOrNull?.uid;
+              if (uid == null) return;
               await friendService.acceptRequest(
                 request.requestId,
                 request.fromUid,
-                FirebaseAuth.instance.currentUser!.uid,
+                uid,
               );
             },
             style: ElevatedButton.styleFrom(
