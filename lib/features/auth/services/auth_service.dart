@@ -58,6 +58,7 @@ class AuthService {
       rethrow;
     }
 
+    await credential.user!.sendEmailVerification();
     return credential;
   }
 

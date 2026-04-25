@@ -9,6 +9,7 @@ import 'core/theme/app_theme.dart';
 import 'data/services/notification_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/auth/screens/register_screen.dart';
+import 'features/auth/screens/verify_email_screen.dart';
 import 'features/clubs/screens/club_detail_screen.dart';
 import 'features/clubs/screens/clubs_hub_screen.dart';
 import 'features/clubs/screens/create_club_screen.dart';
@@ -21,7 +22,7 @@ import 'firebase_options.dart';
 // allowing go_router to re-evaluate redirects reactively.
 class _AuthStateListenable extends ChangeNotifier {
   _AuthStateListenable() {
-    FirebaseAuth.instance.authStateChanges().listen((user) {
+    FirebaseAuth.instance.idTokenChanges().listen((user) {
       if (user != null) {
         NotificationService.checkAndNotifyOverdueMaintenance(user.uid);
         NotificationService.checkAndNotifyFriendRequests(user.uid);
@@ -46,11 +47,18 @@ void main() async {
     initialLocation: '/login',
     refreshListenable: authListenable,
     redirect: (context, state) {
-      final signedIn = FirebaseAuth.instance.currentUser != null;
+      final user = FirebaseAuth.instance.currentUser;
+      final signedIn = user != null;
+      final emailVerified = user?.emailVerified ?? false;
       final onAuth = state.matchedLocation == '/login' ||
           state.matchedLocation == '/register';
-      if (signedIn && onAuth) return '/home';
+      final onVerify = state.matchedLocation == '/verify-email';
+
       if (!signedIn && !onAuth) return '/login';
+      if (signedIn && onAuth) return '/home';
+      if (signedIn && !emailVerified && !onVerify) {
+        return '/verify-email';
+      }
       return null;
     },
     routes: [
@@ -61,6 +69,10 @@ void main() async {
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: '/verify-email',
+        builder: (ctx, s) => const VerifyEmailScreen(),
       ),
       GoRoute(
         path: '/home',
