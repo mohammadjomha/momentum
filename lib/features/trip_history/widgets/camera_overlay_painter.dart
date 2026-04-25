@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/weather_utils.dart';
 import '../models/trip_model.dart';
 
 class CameraOverlayPainter extends CustomPainter {
@@ -16,6 +17,7 @@ class CameraOverlayPainter extends CustomPainter {
   final String smoothnessLabel;
   final String weatherLabel;
   final double tempC;
+  final int weatherCode;
   final String date;
   final String username;
 
@@ -30,6 +32,7 @@ class CameraOverlayPainter extends CustomPainter {
     required this.smoothnessLabel,
     required this.weatherLabel,
     required this.tempC,
+    this.weatherCode = 0,
     required this.date,
     required this.username,
   });
@@ -286,7 +289,7 @@ class CameraOverlayPainter extends CustomPainter {
   }) {
     final iconPainter = TextPainter(
       text: TextSpan(
-        text: String.fromCharCode(Icons.wb_sunny_outlined.codePoint),
+        text: String.fromCharCode(weatherIconCodePoint(weatherCode)),
         style: const TextStyle(
           fontSize: 24,
           color: AppTheme.accent,
@@ -486,6 +489,7 @@ class CameraOverlayPainter extends CustomPainter {
         oldDelegate.smoothnessLabel != smoothnessLabel ||
         oldDelegate.weatherLabel != weatherLabel ||
         oldDelegate.tempC != tempC ||
+        oldDelegate.weatherCode != weatherCode ||
         oldDelegate.date != date ||
         oldDelegate.username != username;
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/weather_utils.dart';
 import '../models/trip_model.dart';
 import 'share_card_painter.dart';
 
@@ -273,8 +274,8 @@ class _WeatherBlock extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Icon(
-          Icons.wb_sunny_outlined,
+        Icon(
+          weatherIcon(trip.weatherCode),
           color: AppTheme.accent,
           size: 52,
         ),

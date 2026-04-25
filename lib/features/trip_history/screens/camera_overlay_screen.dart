@@ -175,6 +175,7 @@ class _CameraOverlayScreenState extends ConsumerState<CameraOverlayScreen> {
                     _smoothnessLabel(widget.trip.smoothnessScore),
                 weatherLabel: widget.trip.weatherLabel,
                 tempC: widget.trip.weatherTempC,
+                weatherCode: widget.trip.weatherCode,
                 date: dateText,
                 username: username,
               ),

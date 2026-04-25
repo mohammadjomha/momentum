@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/weather_utils.dart';
 import '../../../features/leaderboard/providers/leaderboard_provider.dart';
 import '../models/trip_model.dart';
 import '../services/coaching_service.dart';
@@ -1103,8 +1104,8 @@ class _WeatherCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(
-                Icons.wb_sunny_outlined,
+              Icon(
+                weatherIcon(trip.weatherCode),
                 color: AppTheme.accent,
                 size: 36,
               ),
