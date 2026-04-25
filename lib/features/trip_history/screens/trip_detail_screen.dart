@@ -14,6 +14,7 @@ import '../models/trip_model.dart';
 import '../services/coaching_service.dart';
 import '../services/trip_history_service.dart';
 import '../widgets/share_trip_card.dart';
+import 'camera_overlay_screen.dart';
 
 class TripDetailScreen extends ConsumerStatefulWidget {
   final TripModel trip;
@@ -118,6 +119,77 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
     if (h > 0) return '${h}h ${m}m';
     if (m > 0) return '${m}m ${s}s';
     return '${s}s';
+  }
+
+  void _showShareOptions(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.textSecondary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.image_outlined, color: AppTheme.accent),
+              title: const Text(
+                'Share Card',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: const Text(
+                'Classic Momentum share card',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _shareTrip();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.accent),
+              title: const Text(
+                'Camera Overlay',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              subtitle: const Text(
+                'Take a photo with your trip overlaid',
+                style: TextStyle(color: AppTheme.textSecondary),
+              ),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => CameraOverlayScreen(
+                      trip: widget.trip,
+                      route: widget.trip.route,
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _shareTrip() async {
@@ -241,6 +313,7 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
                         child: _ShareButton(
                           isSharing: _isSharing,
                           onPressed: _shareTrip,
+                          onShowShareOptions: () => _showShareOptions(context),
                         ),
                       ),
                       const SliverToBoxAdapter(child: SizedBox(height: 32)),
@@ -259,7 +332,12 @@ class _TripDetailScreenState extends ConsumerState<TripDetailScreen> {
 class _ShareButton extends StatelessWidget {
   final bool isSharing;
   final VoidCallback onPressed;
-  const _ShareButton({required this.isSharing, required this.onPressed});
+  final VoidCallback onShowShareOptions;
+  const _ShareButton({
+    required this.isSharing,
+    required this.onPressed,
+    required this.onShowShareOptions,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -280,7 +358,7 @@ class _ShareButton extends StatelessWidget {
                 ),
               )
             : OutlinedButton.icon(
-                onPressed: onPressed,
+                onPressed: onShowShareOptions,
                 icon: const Icon(Icons.share, color: AppTheme.accent),
                 label: const Text(
                   'Share Trip',

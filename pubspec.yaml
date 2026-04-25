@@ -63,6 +63,7 @@ dependencies:
   share_plus: ^10.1.4
   path_provider: ^2.1.4
   image_picker: ^1.1.2
+  gal: ^1.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

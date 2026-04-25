@@ -59,8 +59,10 @@
 		</array>
 		<key>NSUserNotificationsUsageDescription</key>
 		<string>Momentum uses notifications to remind you when vehicle maintenance is overdue.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>Momentum uses the camera to create trip overlay photos.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>Momentum saves your trip card to your photo library so you can share it.</string>
+		<string>Momentum saves your trip overlay photo to your photo library.</string>
 		<key>UIStatusBarHidden</key>
 		<true/>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
