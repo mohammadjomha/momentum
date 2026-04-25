@@ -20,6 +20,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   bool _loading = false;
   String? _error;
+  String? _usernameError;
   bool _obscurePassword = true;
 
   @override
@@ -31,11 +32,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
     setState(() {
-      _loading = true;
+      _usernameError = null;
       _error = null;
     });
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _loading = true);
     try {
       await _authService.register(
         email: _emailController.text,
@@ -44,7 +46,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       if (mounted) context.go('/home');
     } catch (e) {
-      setState(() => _error = _friendlyError(e.toString()));
+      final msg = e.toString();
+      if (msg.contains('Username already taken.')) {
+        setState(() => _usernameError = 'Username already taken.');
+      } else {
+        setState(() => _error = _friendlyError(msg));
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -160,6 +167,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       validator: (v) {
         if (v == null || v.trim().isEmpty) return 'Choose a username';
         if (v.trim().length < 3) return 'Username must be at least 3 characters';
+        if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(v.trim())) {
+          return 'Only letters, numbers, and underscores allowed.';
+        }
+        if (_usernameError != null) return _usernameError;
         return null;
       },
     );

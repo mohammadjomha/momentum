@@ -186,18 +186,47 @@ Future<void> saveProfile({
   final uid = _auth.currentUser?.uid;
   if (uid == null) throw Exception('Not signed in');
 
-  final Map<String, dynamic> update = {
-    'username': username.trim(),
-  };
+  final trimmed = username.trim();
+  final lower = trimmed.toLowerCase();
 
-  final Map<String, dynamic> car = {};
-  if (make != null && make.isNotEmpty) car['make'] = make.trim();
-  if (model != null && model.isNotEmpty) car['model'] = model.trim();
-  if (year != null && year.isNotEmpty) car['year'] = year.trim();
-  if (trim != null && trim.isNotEmpty) car['trim'] = trim.trim();
-  if (notes != null && notes.isNotEmpty) car['notes'] = notes.trim();
+  if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(trimmed)) {
+    throw Exception('Only letters, numbers, and underscores allowed.');
+  }
 
-  if (car.isNotEmpty) update['car'] = car;
+  final userRef = _firestore.collection('users').doc(uid);
+  final newUsernameRef = _firestore.collection('usernames').doc(lower);
 
-  await _firestore.collection('users').doc(uid).update(update);
+  await _firestore.runTransaction((tx) async {
+    final userSnap = await tx.get(userRef);
+    final oldLower =
+        (userSnap.data()?['usernameLower'] as String?) ?? '';
+
+    if (lower != oldLower) {
+      final newUsernameSnap = await tx.get(newUsernameRef);
+      if (newUsernameSnap.exists &&
+          (newUsernameSnap.data()?['uid'] as String?) != uid) {
+        throw Exception('Username already taken.');
+      }
+
+      if (oldLower.isNotEmpty) {
+        tx.delete(_firestore.collection('usernames').doc(oldLower));
+      }
+      tx.set(newUsernameRef, {'uid': uid});
+    }
+
+    final Map<String, dynamic> update = {
+      'username': trimmed,
+      'usernameLower': lower,
+    };
+
+    final Map<String, dynamic> car = {};
+    if (make != null && make.isNotEmpty) car['make'] = make.trim();
+    if (model != null && model.isNotEmpty) car['model'] = model.trim();
+    if (year != null && year.isNotEmpty) car['year'] = year.trim();
+    if (trim != null && trim.isNotEmpty) car['trim'] = trim.trim();
+    if (notes != null && notes.isNotEmpty) car['notes'] = notes.trim();
+    if (car.isNotEmpty) update['car'] = car;
+
+    tx.update(userRef, update);
+  });
 }

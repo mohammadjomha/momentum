@@ -28,7 +28,7 @@ The following already exists and works — do not rewrite unless explicitly aske
 - `lib/features/leaderboard/providers/leaderboard_provider.dart` — StateNotifierProvider holding selected time filter and fetched entries; `isRefreshing` bool added to `LeaderboardState` (set true at start of `_load`, false at end on both success and error paths); all-time trip query cached in `allTimeByUid` state — `needsAllTime` guard fires the full-collection scan exactly once per session (`allTimeByUid.isEmpty && filter != allTime`); `copyWith` null-guard preserves existing `allTimeByUid` on cache-hit paths; `_fetchCarModels` parallelized with `Future.wait` and backed by `_carByUid` session cache on the notifier — user docs never re-fetched across filter switches; forceRefresh() clears allTimeByUid cache then calls _load() — used after trip deletion to prevent stale leaderboard data; `currentUidProvider` uses `ref.watch(authStateProvider).valueOrNull?.uid`
 - `lib/features/profile/screens/profile_screen.dart` — user profile, car details, stats, maintenance section, sign out; tracks `_lastUid` and calls `_resetHydration()` via `ref.listen(authStateProvider)` when uid changes; `_hydrateIfNeeded()` called synchronously from `ref.read(userProfileProvider).valueOrNull` in `initState` (zero-frame flash of empty fields) and from `ref.listen(userProfileProvider)` in `build()` as fallback for first-ever launch; `profileAsync.when` has `skipLoadingOnReload: true, skipLoadingOnRefresh: true` — subsequent tab visits never show the full-screen spinner, stale data shown instantly while Firestore catches up; `nhtsaMakesProvider` and `nhtsaModelsProvider` are both non-autoDispose — `load()` guarded by `loadState != NhtsaLoadState.loaded` so NHTSA HTTP fires exactly once per session; model dropdown skips `loadForMake` on re-entry when `forMake == profile.carMake && loadState == loaded`, setting `_selectedModel` synchronously with no spinner; `NhtsaLoadState.idle` no longer treated as loading in `_buildMakeDropdown`; `_signOut()` calls `ref.invalidate()` on all six per-user providers as a safety net; `_FriendRequestCard` returns `SizedBox.shrink()` if uid is null — no bang operator used; `_FriendRequestCard` returns `SizedBox.shrink()` if uid is null — no bang operator used
 - `lib/features/profile/services/nhtsa_service.dart` — NHTSA API for make/model dropdowns
-- `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state; `userProfileProvider` watches `authStateProvider` via `.valueOrNull?.uid` to prevent AsyncLoading propagation
+- `lib/features/profile/providers/profile_provider.dart` — Riverpod provider for profile state; `userProfileProvider` watches `authStateProvider` via `.valueOrNull?.uid` to prevent AsyncLoading propagation; `saveProfile` runs a Firestore transaction that enforces username uniqueness (reads `usernames/{lower}`, aborts with "Username already taken." if claimed by another uid, deletes old `usernames/{oldLower}` doc and writes new one on success); validates allow-list (`^[a-zA-Z0-9_]+$`) before the transaction; writes both `username` and `usernameLower` to `users/{uid}`
 - `lib/features/profile/models/maintenance_entry.dart` — MaintenanceEntry model with toMap()/fromDoc()
 - `lib/features/profile/providers/maintenance_provider.dart` — StateNotifierProvider streaming maintenance entries; addEntry/updateEntry/deleteEntry; `MaintenanceNotifier` holds `StreamSubscription? _sub`, uses `resubscribe(String? uid)` driven by `ref.listen(authStateProvider)` with `fireImmediately: true`, cancels subscription in `dispose()` — no listener leak
 - `lib/features/profile/widgets/maintenance_bottom_sheet.dart` — add/edit bottom sheet with type presets, date pickers, notes
@@ -206,15 +206,18 @@ lib/
 ### Authentication
 - Provider: Firebase Email/Password only
 - Registration fields: email, password, username only — no car field on registration
-- Username stored in Firestore under users/{uid} — not in Firebase Auth
+- Username stored in Firestore under users/{uid} — not in Firebase Auth; `usernameLower` (lowercased) stored alongside for case-insensitive uniqueness and search
 - Car details are filled in later on the profile screen
 - Login: email + password only
 - Username is the display identity across leaderboard and profile
+- Usernames are case-insensitive and unique: "John" and "john" are the same username
+- Registration uses a Firestore transaction: reads `usernames/{lower}`, aborts with "Username already taken." if taken, then writes `users/{uid}` and `usernames/{lower} = {uid}` atomically; Firebase Auth account is deleted on transaction failure so no dangling auth entry is left
+- Allow-list enforced client-side and in `saveProfile`: `^[a-zA-Z0-9_]+$` — letters, numbers, underscores only
 
 ### Firestore collections
 ```
 users/{uid}
-  - username, email, totalDistance, totalTrips, createdAt
+  - username, usernameLower, email, totalDistance, totalTrips, createdAt
   - car: { make, model, year, trim (optional), notes (optional) }
   - friends: [ uid, ... ]  ← array of accepted friend UIDs
 
@@ -224,6 +227,9 @@ users/{uid}/maintenance/{entryId}
   - nextDueDate (Timestamp, optional)
   - notes (String, optional)
   - createdAt (Timestamp)
+
+usernames/{usernameLower}
+  - uid  ← uniqueness index; doc ID is the lowercased username
 
 trips/{tripId}
   - uid, username, date, maxSpeed, avgSpeed, distance, duration
@@ -302,7 +308,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 ## Features status
 
 ### Complete
-- Auth screens — register (email, password, username) + login
+- Auth screens — register (email, password, username) + login; username uniqueness enforced via `usernames/{lower}` Firestore collection; allow-list validation (`^[a-zA-Z0-9_]+$`); readable field-level errors on both register and profile screens
 - UI modernization — arc speedometer, glass stat cards on tracking screen
 - Trip history + storage — Hive + Firestore, trip list screen, trip detail screen
 - Route visualization — Google Maps dark style, teal polyline, canvas circle markers
@@ -319,7 +325,7 @@ static const routeLine     = Color(0xFF00D4A0);  // teal route trace on map
 - Friend system — send/accept/decline/remove friends via `friend_service.dart`; `friend_requests` Firestore collection; `friends` array on `users/{uid}`; FriendEntry and FriendRequest models; `friend_provider.dart` Riverpod providers; friends list and pending received requests shown on profile screen; Android notifications for incoming friend requests using SharedPreferences to track notified request IDs
 - User mini card — `user_mini_card.dart` bottom sheet showing username, car, stats; triggered from leaderboard entry tap; includes Send Friend Request button
 - Friend comparison screen — `friend_comparison_screen.dart` at route `/friends/compare/:friendUid`; side-by-side stat comparison between current user and a friend; `parseTrips` filters `t.smoothnessScore > 0 && t.distance >= 0.5` so unscored/short trips are excluded from avg and best smoothness calculations
-- Friend search — `lib/features/friends/screens/friend_search_screen.dart` — accessible from profile via `person_add_outlined` icon next to FRIENDS header; prefix/partial username search via Firestore range query (`isGreaterThanOrEqualTo` / `isLessThan`), 400ms debounce, limit 20; excludes current user from results; tapping a result opens `user_mini_card.dart` bottom sheet; registered at `/friends/search` in go_router
+- Friend search — `lib/features/friends/screens/friend_search_screen.dart` — accessible from profile via `person_add_outlined` icon next to FRIENDS header; prefix/partial username search via Firestore range query on `usernameLower` field with lowercased input (`isGreaterThanOrEqualTo` / `isLessThan`), 400ms debounce, limit 20; excludes current user from results; displays `username` (original casing) in result tiles; tapping a result opens `user_mini_card.dart` bottom sheet; registered at `/friends/search` in go_router
 - Launcher icons — `flutter_launcher_icons` generates Android adaptive icons (`#0D0D0D` background + foreground layer) and iOS icons from `assets/images/launcher_icon.png`; Android launch theme shows plain dark background while Flutter engine initialises (no splash image)
 - Delete trip — trash icon in trip detail app bar; confirmation dialog; deleteTrip(tripId, distanceKm) in trip_history_service.dart deletes trips/{tripId} and decrements totalTrips/totalDistance on users/{uid}; forceRefresh() on leaderboard clears allTimeByUid cache then reloads; StreamProvider in trip history auto-updates; "Trip deleted" snackbar shown after pop
 - Social clubs — full feature. Create/join/leave/delete clubs (max 50 members); create club name capped at 50 chars and description at 200 chars (matching edit club sheet maxLength). Clubs tab is the middle navbar item (replaced marketplace). Club discovery via search (prefix match) and browse-all (sorted by member count). Per-club feed with posts (text + optional image via image_picker, Firebase Storage at club_posts/{clubId}/{timestamp}.jpg). Posts support: like/unlike (toggleLike batch write), comments (subcollection clubs/{clubId}/posts/{postId}/comments with commentCount maintained via batch), edit caption (author only), delete (author or admin). Admin/owner can pin one post per club (pinnedPostId on club doc, shown above feed with teal pin indicator). CreatePostSheet (`lib/features/clubs/widgets/create_post_sheet.dart`) handles image picker (camera + gallery) and caption. PostCard (`lib/features/clubs/widgets/post_card.dart`) renders feed items with like/comment actions, three-dot menu, relative timestamps, “(edited)” label. CommentsSheet and EditPostSheet are inline widgets inside post_card.dart. Per-club leaderboard tab uses ClubLeaderboardNotifier (StateNotifierProvider.family, autoDispose), batched whereIn queries (chunks of 30), filtered to club members, same time filter toggles, full stale-while-revalidate and session caching parity with global leaderboard. ClubsHubScreen supports embedded mode (no back button when used as navbar tab). Owner can edit club name/description via bottom sheet. Owner and admins access settings sheet via gear icon in app bar; settings sheet tiles: Edit club (owner only), Members (owner or admin), Delete club (owner only). Members sheet: all members listed with owner/admin badges; owner can promote to admin, demote admin, or remove members; admins can remove regular members only; posts/comments from removed members persist in the feed.

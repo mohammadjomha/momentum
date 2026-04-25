@@ -52,12 +52,13 @@ class _FriendSearchScreenState extends ConsumerState<FriendSearchScreen> {
 
   Future<void> _search(String query) async {
     _lastQuery = query;
+    final queryLower = query.toLowerCase();
     final myUid = FirebaseAuth.instance.currentUser?.uid ?? '';
     try {
       final snap = await FirebaseFirestore.instance
           .collection('users')
-          .where('username', isGreaterThanOrEqualTo: query)
-          .where('username', isLessThan: '$query\uf8ff')
+          .where('usernameLower', isGreaterThanOrEqualTo: queryLower)
+          .where('usernameLower', isLessThan: '$queryLower\uf8ff')
           .limit(20)
           .get();
 

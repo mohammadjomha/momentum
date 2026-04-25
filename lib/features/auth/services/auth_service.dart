@@ -29,13 +29,34 @@ class AuthService {
       password: password,
     );
 
-    await _firestore.collection('users').doc(credential.user!.uid).set({
-      'username': username.trim(),
-      'email': email.trim(),
-      'totalDistance': 0.0,
-      'totalTrips': 0,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+    final uid = credential.user!.uid;
+    final trimmed = username.trim();
+    final lower = trimmed.toLowerCase();
+
+    final usernameRef = _firestore.collection('usernames').doc(lower);
+    final userRef = _firestore.collection('users').doc(uid);
+
+    try {
+      await _firestore.runTransaction((tx) async {
+        final usernameSnap = await tx.get(usernameRef);
+        if (usernameSnap.exists) {
+          throw Exception('Username already taken.');
+        }
+        tx.set(userRef, {
+          'username': trimmed,
+          'usernameLower': lower,
+          'email': email.trim(),
+          'totalDistance': 0.0,
+          'totalTrips': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        tx.set(usernameRef, {'uid': uid});
+      });
+    } catch (e) {
+      // Roll back the Auth account so the user can retry cleanly.
+      await credential.user!.delete();
+      rethrow;
+    }
 
     return credential;
   }

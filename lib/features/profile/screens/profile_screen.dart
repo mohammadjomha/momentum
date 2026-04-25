@@ -160,10 +160,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
       if (mounted) setState(() => _saved = true);
     } catch (e) {
-      if (mounted) setState(() => _saveError = 'Save failed. Please try again.');
+      if (mounted) setState(() => _saveError = _friendlySaveError(e.toString()));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  String _friendlySaveError(String raw) {
+    if (raw.contains('Username already taken.')) return 'Username already taken.';
+    if (raw.contains('Only letters, numbers, and underscores allowed.')) {
+      return 'Only letters, numbers, and underscores allowed.';
+    }
+    return 'Save failed. Please try again.';
   }
 
   Future<void> _signOut() async {
