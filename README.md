@@ -1,6 +1,7 @@
+```markdown
 # Momentum
 
-> Strava for cars — real-time drive tracking, trip analytics, and a social layer for automotive enthusiasts.
+> Track every drive. Analyze every moment. Own your performance — real-time drive tracking, trip analytics, and a social layer for automotive enthusiasts.
 
 ![Flutter](https://img.shields.io/badge/Flutter-3.10.7+-02569B?logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?logo=dart&logoColor=white)
@@ -9,18 +10,9 @@
 
 ---
 
-## Screenshots
-
-<!-- Drop screenshots or a demo GIF here -->
-<!-- Example: ![Tracking Screen](docs/screenshots/tracking.png) -->
-
-> _Screenshots coming soon._
-
----
-
 ## About
 
-Momentum is a Flutter mobile app that tracks real-time driving statistics using GPS and accelerometer sensors, stores full trip history with route visualization on Google Maps, and layers a social leaderboard and club system on top. Built as a capstone project for the **Lebanese American University — CSC Department**, it targets automotive enthusiasts who want objective data on how they drive, not just where they went.
+Momentum is a Flutter mobile app that tracks real-time driving statistics using GPS and accelerometer sensors, stores full trip history with route visualization on Google Maps, and layers a social leaderboard and club system on top. Built for enthusiasts, new drivers, and performance coaches who want objective data on how they drive — not just where they went. Built as a capstone project for the **Lebanese American University — CSC Department**.
 
 ---
 
@@ -168,7 +160,7 @@ The `build.gradle.kts` reads this file and injects the key via `manifestPlacehol
 Run FlutterFire CLI to generate `firebase_options.dart`:
 
 ```bash
-dart pub global activate flutterfirefire_cli
+dart pub global activate flutterfire_cli
 flutterfire configure
 ```
 
@@ -244,4 +236,4 @@ This project is a student capstone submission. All rights reserved.
 ---
 
 _Built as a capstone project for the Lebanese American University — CSC Department._
-
+```
