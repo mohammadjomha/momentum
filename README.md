@@ -1,4 +1,3 @@
-```markdown
 # Momentum
 
 > Track every drive. Analyze every moment. Own your performance — real-time drive tracking, trip analytics, and a social layer for automotive enthusiasts.
@@ -231,9 +230,4 @@ Firestore and Storage are currently in **test mode**. Tighten rules before any p
 
 ## License
 
-This project is a student capstone submission. All rights reserved.
-
----
-
-_Built as a capstone project for the Lebanese American University — CSC Department._
-```
+This project is a student capstone submission at the Lebanese American University - CSM Department. All rights reserved.
