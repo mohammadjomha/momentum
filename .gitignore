@@ -94,4 +94,4 @@ GoogleService-Info.plist
 # Environment / secrets
 .env
 *.env
-lib/config/secrets.dart
+lib/config/secrets.dartCLAUDE.md
