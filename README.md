@@ -1,4 +1,3 @@
-```markdown
 # Momentum
 
 > Strava for cars — real-time drive tracking, trip analytics, and a social layer for automotive enthusiasts.
@@ -245,4 +244,4 @@ This project is a student capstone submission. All rights reserved.
 ---
 
 _Built as a capstone project for the Lebanese American University — CSC Department._
-```
+
