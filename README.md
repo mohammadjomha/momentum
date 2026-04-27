@@ -215,16 +215,11 @@ clubs/{clubId}/posts/{postId}/comments/{commentId}
 
 The leaderboard queries the `trips` collection directly — there is no separate leaderboard collection.
 
-### Storage Rules
-Firestore and Storage are currently in **test mode**. Tighten rules before any public-facing demo.
-
 ---
 
 ## Known Limitations
 
 **iOS push notifications** — Android notifications work correctly (friend requests trigger system notifications; maintenance overdue alerts fire on launch). iOS delivery is unreliable due to foreground suppression — notifications only appear when the app is backgrounded shortly after launch. Resolving this requires APNs entitlement configuration via Xcode, which is unavailable on the Windows dev machine. Functional for demo on Android.
-
-**Page title vertical alignment** — The title position is slightly inconsistent across the four main tab screens (Track vs History most noticeable). All screens use identical `SafeArea(top: true)` + 16px top padding. The root cause appears to be Android status bar rendering or font metrics rather than a padding issue — a direct fix attempt did not resolve it. Flagged for follow-up.
 
 ---
 
